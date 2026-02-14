@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+
+        <!-- Basic styling for the popup window. -->
+        <style>
+            body { font-family: Arial, sans-serif; width: 360px; padding: 10px; }
+            .row { margin-top: 10px; }
+            input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+            button { width: 100%; padding: 10px; margin-top: 8px; }
+            small { color: #444; }
+            .status { margin-top: 8px; font-size: 12px; }
+            code { font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <!-- Auto-collect toggle for .edu and .gov pages. -->
+        <div class="row">
+            <label>
+                <input type=""checkbox" id=""autoCollect" />
+                Auto collect visits for .edu and .gov domains.
+            </label>
+            <!-- Helper text for the user. -->
+            <div><small> When on, the extension watches only .edu and .gov domains.</small></div>
+        </div>
+
+        <!-- Custom webpage input and controls. -->
+        <div class="row">
+            <label for="customUrl"><strong>Custom webpage</strong></label>
+            <input id="customUrl" type="text" placeholder="https://example.edu/some/page" />
+            <button id="setCustom">Set custom page (ask permission)</button>
+            <button id="clearCustom">Remove custom page</button>
+            <div><small>We match exactly this page path. Query and hash are ignored.</small></div>
+        </div>
+
+        <!-- Manual actions and status display. -->
+        <div class="row">
+            <button id="sendNow">Send queued items now</button>
+            <button id="clearLocal">Clear local extension data</button>
+            <div class="status" id="status"></div>
+            <div class="status"><small>Queued count: <span id="queueCount">0</span></small></div>
+        </div>
+
+        <script src=""popup.js"></script>
+    </body>
+</html>
