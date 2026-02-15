@@ -18,7 +18,7 @@
         <!-- Auto-collect toggle for .edu and .gov pages. -->
         <div class="row">
             <label>
-                <input type=""checkbox" id=""autoCollect" />
+                <input type="checkbox" id="autoCollect" />
                 Auto collect visits for .edu and .gov domains.
             </label>
             <!-- Helper text for the user. -->
@@ -28,6 +28,9 @@
         <!-- Custom webpage input and controls. -->
         <div class="row">
             <label for="customUrl"><strong>Custom webpage</strong></label>
+            <button id="useCurrent" style="margin-bottom: 5px; background-color: #f0f0f0;">
+                Use Current Page
+            </button>
             <input id="customUrl" type="text" placeholder="https://example.edu/some/page" />
             <button id="setCustom">Set custom page (ask permission)</button>
             <button id="clearCustom">Remove custom page</button>
@@ -42,6 +45,6 @@
             <div class="status"><small>Queued count: <span id="queueCount">0</span></small></div>
         </div>
 
-        <script src=""popup.js"></script>
+        <script src="popup.js"></script>
     </body>
 </html>

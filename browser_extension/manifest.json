@@ -3,7 +3,7 @@
     "name": "Domain Collector",
     "version": "0.1.0",
     "description": "Collect .edu/.gov domains and any custom page the user asks for, then pass to native host.",
-    "permissions": ["storage", "alarms", "webNavigation", "nativeMessaging", "permissions"],
+    "permissions": ["storage", "alarms", "webNavigation", "nativeMessaging", "activeTab"],
     "host_permissions": ["*://*.edu/*","*://*.gov/*"],
     "optional_host_permissions": ["*://*/*"],
     "action": 

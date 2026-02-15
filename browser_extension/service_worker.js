@@ -10,7 +10,7 @@ const DEFAULTS = {
   customPage: null,        // normalized "https://example.com/path"
   queue: [],               // unsent items [{ kind, value, seen_at }]
   lastSent: {},            // throttling map: key -> timestamp
-  hostName: "com.example.benefit_collector" // replace with partner-provided host name
+  hostName: "com.lpbd.native.host" // replace with partner-provided host name
 };
 
 const SEND_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // once per week per key
@@ -103,7 +103,7 @@ function connectAndSend(hostName, payload) {
 async function flushQueue() {
   const state = await getState();
   const queue = state.queue || [];
-  if (queue.length === 0) return;
+  if (queue.length === 0) return true;
 
   const payload = {
     type: "collector.sync",
@@ -115,8 +115,10 @@ async function flushQueue() {
   try {
     await connectAndSend(state.hostName, payload);
     await setState({ queue: [] });
+    return true;
   } catch {
     // Keep queue. We'll retry via alarm or manual flush.
+    return false;
   }
 }
 
@@ -134,12 +136,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // Event: popup asked us to flush right now.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === "queue.flush") {
-    flushQueue()
-      .then(() => sendResponse({ ok: true }))
-      .catch(() => sendResponse({ ok: false }));
-    return true;
-  }
+  if (msg?.type === "queue.flush") 
+    {
+      flushQueue()
+         .then((ok) => sendResponse({ ok }))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
 });
 
 // Event: navigation committed (top frame). Collect allowed items and send or queue.
