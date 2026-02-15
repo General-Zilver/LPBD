@@ -1,0 +1,9 @@
+# --- The Scraper & Mapper (Cloud Stuff) ---
+requests
+beautifulsoup4
+ultimate-sitemap-parser
+
+# --- The Desktop App (GUI & Database) ---
+customtkinter  # UI
+packaging      # Version checking
+pillow         # Image handling for the GUI
