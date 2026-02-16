@@ -1,0 +1,19 @@
+{
+    "manifest_version": 3,
+    "name": "Domain Collector",
+    "version": "0.1.0",
+    "description": "Collect .edu/.gov domains and any custom page the user asks for, then pass to native host.",
+    "permissions": ["storage", "alarms", "webNavigation", "nativeMessaging", "activeTab"],
+    "host_permissions": ["*://*.edu/*","*://*.gov/*"],
+    "optional_host_permissions": ["*://*/*"],
+    "action": 
+        {
+            "default_popup": "popup.html",
+            "default_title": "Domain Collector"
+        },
+    "background": 
+        {
+            "service_worker": "service_worker.js"
+        }
+
+}
