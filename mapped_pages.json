@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "domain": "https://www.utrgv.edu",
+  "found_count": 9,
+  "urls": [
+    "https://www.utrgv.edu/academics/current-student-resources/index.htm",
+    "https://www.utrgv.edu/admissions/apply/index.htm",
+    "https://www.utrgv.edu/cost-and-aid/cost-of-attendance/index.htm",
+    "https://www.utrgv.edu/cost-and-aid/financial-aid/index.htm",
+    "https://www.utrgv.edu/cost-and-aid/index.htm",
+    "https://www.utrgv.edu/counseling/services/mental-health-resources/index.htm",
+    "https://www.utrgv.edu/graduate/for-future-students/application-deadlines/index.htm",
+    "https://www.utrgv.edu/scholarships/index.htm",
+    "https://www.utrgv.edu/student-life/housing/index.htm"
+  ]
+}
