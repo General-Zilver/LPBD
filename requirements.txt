@@ -1,3 +1,4 @@
+#Use this to install requirements:  pip install -r requirements.txt
 # --- The Scraper & Mapper (Cloud Stuff) ---
 requests
 beautifulsoup4
