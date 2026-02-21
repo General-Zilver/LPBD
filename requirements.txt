@@ -1,10 +1,14 @@
-#Use this to install requirements:  pip install -r requirements.txt
-# --- The Scraper & Mapper (Cloud Stuff) ---
+# Use this to install requirements: pip install -r requirements.txt
+
+# --- Scraper / API Worker ---
+fastapi
+uvicorn[standard]
+pydantic
 requests
 beautifulsoup4
 ultimate-sitemap-parser
 
-# --- The Desktop App (GUI & Database) ---
-customtkinter  # UI
-packaging      # Version checking
-pillow         # Image handling for the GUI
+# --- Desktop App (GUI) ---
+customtkinter
+packaging
+pillow
