@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from batch_workers import launch_background, resolve_worker_count, should_run_in_background
 
 # Keywords that indicate pages likely related to student benefits/resources.
 KEYWORDS_TO_KEEP = [
@@ -384,13 +385,35 @@ def _parse_args():
     parser.add_argument(
         "--workers",
         type=int,
-        default=1,
-        help="Number of domains to map concurrently.",
+        default=0,
+        help="Number of domains to map concurrently (0 = auto).",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=5,
+        help="Upper safety limit for worker auto-tuning.",
     )
     parser.add_argument(
         "--no-subdomains",
         action="store_true",
         help="Restrict mapping to the exact host only.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "foreground", "background"],
+        default="auto",
+        help="Run mode: auto backgrounds multi-domain batches.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default="",
+        help="Optional log file path for background mode.",
+    )
+    parser.add_argument(
+        "--run-batch",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--output",
@@ -406,10 +429,34 @@ if __name__ == "__main__":
     targets = args.domains or ["https://www.utrgv.edu"]
     include_subdomains = not args.no_subdomains
     output_file = Path(args.output)
+    max_workers = max(1, args.max_workers)
+    resolved_workers = resolve_worker_count(
+        domain_count=len(targets),
+        requested_workers=args.workers,
+        max_workers=max_workers,
+    )
+
+    run_in_background = (not args.run_batch) and should_run_in_background(args.mode, len(targets))
+    if run_in_background:
+        pid, log_path = launch_background(
+            script_path=Path(__file__).resolve(),
+            domains=targets,
+            requested_workers=args.workers,
+            max_workers=max_workers,
+            include_subdomains=include_subdomains,
+            output_path=output_file,
+            log_file=args.log_file,
+        )
+        print(f"Started background mapper process PID {pid}.")
+        print(f"Logs: {log_path}")
+        print(f"Output file: {output_file}")
+        raise SystemExit(0)
+
+    print(f"Running mapper with {resolved_workers} worker(s).")
 
     map_domains_batch(
         domains=targets,
         include_subdomains=include_subdomains,
-        workers=args.workers,
+        workers=resolved_workers,
         output_path=output_file,
     )
