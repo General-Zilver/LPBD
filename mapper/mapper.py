@@ -1,8 +1,16 @@
+import argparse
 import json
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from batch_workers import launch_background, resolve_worker_count, should_run_in_background
 
 # Keywords that indicate pages likely related to student benefits/resources.
 KEYWORDS_TO_KEEP = [
@@ -24,6 +32,8 @@ SKIP_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico",
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip",
 }
+
+OUTPUT_FILE = Path(__file__).resolve().parent / "mapped_pages.json"
 
 
 # Normalizes the starting host and strips a leading "www." for root-domain matching.
@@ -224,25 +234,229 @@ def map_domain(url, include_subdomains=True):
             "urls": relevant_urls,
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error",
+            "domain": url,
+            "include_subdomains": include_subdomains,
+            "message": str(e),
+        }
 
 
-if __name__ == "__main__":
-    target = "https://www.utrgv.edu"
-    result = map_domain(target, include_subdomains=True)
+def _timestamp_utc():
+    # Returns the current time in UTC ISO format for consistent metadata timestamps.
+    return datetime.now(timezone.utc).isoformat()
 
+
+def _empty_mapped_payload():
+    # Builds the default JSON structure used when starting a new mapped_pages file.
+    return {
+        "schema_version": 2,
+        "updated_at": _timestamp_utc(),
+        "domain_count": 0,
+        "domains": {},
+    }
+
+
+def _load_mapped_payload(raw_text):
+    # Reads existing JSON text and normalizes it into the shared multi-domain schema.
+    if not raw_text.strip():
+        return _empty_mapped_payload()
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return _empty_mapped_payload()
+
+    if isinstance(data, dict) and isinstance(data.get("domains"), dict):
+        data.setdefault("schema_version", 2)
+        data.setdefault("updated_at", _timestamp_utc())
+        data["domain_count"] = len(data["domains"])
+        return data
+
+    # Backward compatibility: legacy single-domain output -> wrap into domains map.
+    if isinstance(data, dict) and data.get("domain"):
+        wrapped = _empty_mapped_payload()
+        wrapped["domains"][data["domain"]] = data
+        wrapped["domain_count"] = 1
+        return wrapped
+
+    return _empty_mapped_payload()
+
+
+@contextmanager
+def _exclusive_file_lock(path):
+    # Opens and locks the output file so concurrent writers do not corrupt shared JSON.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+", encoding="utf-8") as handle:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield handle
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield handle
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def upsert_domain_result(result, output_path=OUTPUT_FILE):
+    # Creates or updates a single domain section in the shared mapped_pages JSON file.
+    output_path = Path(output_path)
+
+    with _exclusive_file_lock(output_path) as handle:
+        handle.seek(0)
+        payload = _load_mapped_payload(handle.read())
+
+        domain_key = result.get("domain") or f"unknown_{len(payload['domains']) + 1}"
+        result_with_timestamp = dict(result)
+        result_with_timestamp["updated_at"] = _timestamp_utc()
+        payload["domains"][domain_key] = result_with_timestamp
+
+        payload["domains"] = dict(sorted(payload["domains"].items()))
+        payload["domain_count"] = len(payload["domains"])
+        payload["updated_at"] = _timestamp_utc()
+
+        handle.seek(0)
+        handle.truncate()
+        json.dump(payload, handle, indent=2)
+        handle.flush()
+
+
+def map_domains_batch(domains, include_subdomains=True, workers=1, output_path=OUTPUT_FILE):
+    # Maps many domains and writes each completed result into one shared output file.
+    workers = max(1, min(workers, len(domains)))
+
+    if workers == 1:
+        for domain in domains:
+            result = map_domain(domain, include_subdomains=include_subdomains)
+            upsert_domain_result(result, output_path=output_path)
+            _print_result_summary(result, output_path)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(map_domain, domain, include_subdomains): domain
+            for domain in domains
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            upsert_domain_result(result, output_path=output_path)
+            _print_result_summary(result, output_path)
+
+
+def _print_result_summary(result, output_path):
+    # Prints a concise per-domain summary after each mapping job finishes.
     if result["status"] == "success":
         print(
-            f"Success ({result['discovery_method']}). "
+            f"Success ({result['domain']} | {result['discovery_method']}). "
             f"Found {result['found_count']} benefit pages from {result['raw_count']} discovered URLs."
         )
+        print(f"Saved/updated {output_path}")
 
-        with open("mapped_pages.json", "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2)
-        print("Saved to mapped_pages.json")
-
-        print("\nTop 5 examples:")
+        print("Top 5 examples:")
         for u in result["urls"][:5]:
             print(f" - {u}")
     else:
-        print(f"Failed: {result['message']}")
+        print(f"Failed ({result.get('domain', 'unknown')}): {result['message']}")
+
+
+def _parse_args():
+    # Defines command-line options for domain list, concurrency, scope, and output file.
+    parser = argparse.ArgumentParser(description="Map one or more domains into a shared mapped_pages.json file.")
+    parser.add_argument(
+        "domains",
+        nargs="*",
+        help="Domain URLs to map (e.g., https://www.utrgv.edu).",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Number of domains to map concurrently (0 = auto).",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=5,
+        help="Upper safety limit for worker auto-tuning.",
+    )
+    parser.add_argument(
+        "--no-subdomains",
+        action="store_true",
+        help="Restrict mapping to the exact host only.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "foreground", "background"],
+        default="auto",
+        help="Run mode: auto backgrounds multi-domain batches.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default="",
+        help="Optional log file path for background mode.",
+    )
+    parser.add_argument(
+        "--run-batch",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--output",
+        default=str(OUTPUT_FILE),
+        help="Output JSON path (default: mapper/mapped_pages.json next to this script).",
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+
+    targets = args.domains or ["https://www.utrgv.edu"]
+    include_subdomains = not args.no_subdomains
+    output_file = Path(args.output)
+    max_workers = max(1, args.max_workers)
+    resolved_workers = resolve_worker_count(
+        domain_count=len(targets),
+        requested_workers=args.workers,
+        max_workers=max_workers,
+    )
+
+    run_in_background = (not args.run_batch) and should_run_in_background(args.mode, len(targets))
+    if run_in_background:
+        pid, log_path = launch_background(
+            script_path=Path(__file__).resolve(),
+            domains=targets,
+            requested_workers=args.workers,
+            max_workers=max_workers,
+            include_subdomains=include_subdomains,
+            output_path=output_file,
+            log_file=args.log_file,
+        )
+        print(f"Started background mapper process PID {pid}.")
+        print(f"Logs: {log_path}")
+        print(f"Output file: {output_file}")
+        raise SystemExit(0)
+
+    print(f"Running mapper with {resolved_workers} worker(s).")
+
+    map_domains_batch(
+        domains=targets,
+        include_subdomains=include_subdomains,
+        workers=resolved_workers,
+        output_path=output_file,
+    )
