@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from question import QuestionPage
 
 class WelcomePage(ctk.CTkFrame):
     def __init__(self, parent):
@@ -26,6 +27,20 @@ class WelcomePage(ctk.CTkFrame):
             text="Settings"
         ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
 
+    def handle_selection(self):
+        selected_options = []
+
+        if self.health_var.get() == "on":
+            selected_options.append("Health")
+        if self.insurance_var.get() == "on":
+            selected_options.append("Insurance")
+        if self.licensing_var.get() == "on":
+            selected_options.append("Licensing")
+        if self.scholarships_var.get() == "on":
+            selected_options.append("Scholarships")
+        if self.other_var.get() == "on":
+            selected_options.append("Other")
+
     def create_content(self):
         main_frame = ctk.CTkFrame(self)
         main_frame.grid(row=1, column=0, sticky="nsew")
@@ -44,18 +59,18 @@ class WelcomePage(ctk.CTkFrame):
             text="Tell us about yourself.",
             font=ctk.CTkFont(size=18),
             anchor="w"
-        ).pack(pady=(0, 30),padx=100, anchor="w")
+        ).pack(pady=(0, 10),padx=100, anchor="w")
 
         # Selection Section
         selection_card = ctk.CTkFrame(main_frame, corner_radius=15)
-        selection_card.pack(padx=20, pady=20, fill="both", expand=True)
+        selection_card.pack(padx=10, pady=10, fill="both", expand=True)
 
         ctk.CTkLabel(
             selection_card,
             text="What are you interested in?",
             font=ctk.CTkFont(size=20, weight="bold"),
             anchor="w"
-        ).pack(pady=(30, 20),padx=20,anchor="w")
+        ).pack(pady=(20, 10),padx=20,anchor="w")
 
         # Inner square box for options
         options_box = ctk.CTkFrame(
@@ -114,3 +129,12 @@ class WelcomePage(ctk.CTkFrame):
             onvalue="on", offvalue="off",
             font=ctk.CTkFont(size=16)
         ).grid(row=2, column=0, columnspan=2, pady=15)
+
+        # Select Button
+        ctk.CTkButton(
+            selection_card,
+            text="Select",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            height=40,
+            command=self.handle_selection
+        ).pack(pady=(0, 10))
