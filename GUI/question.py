@@ -9,6 +9,30 @@ class QuestionPage(ctk.CTkFrame):
         self.selected_options = selected_options
         self.current_step = 1
 
+        # Questions:
+        self.current_question_index = 0
+
+        self.questions = {
+            "Profile": [
+                "What is your full legal name?",
+                "What is your date of birth?",
+                "What is your current address?",
+                "What is your gender?",
+                "Please describe your health history.",
+                "What is your current employment status?"
+            ],
+            "Health": [
+                "Do you currently have health insurance?",
+                "Are you covered under a parent/guardian plan?",
+                "Do you take any regular medications?"
+            ],
+            "Insurance": [
+                "Do you have car insurance?",
+                "Do you have renter's insurance?",
+                "Have you filed any claims in the last year?"
+            ]
+        }
+
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
@@ -73,7 +97,7 @@ class QuestionPage(ctk.CTkFrame):
         # Page Title
         ctk.CTkLabel(
             main_frame,
-            text="Provide Additional Information",
+            text="Tell us about yourself!",
             font=ctk.CTkFont(size=26, weight="bold"),
             anchor="w"
         ).pack(pady=(30, 10), padx=60, anchor="w")
@@ -123,12 +147,13 @@ class QuestionPage(ctk.CTkFrame):
             command=self.back_action
         ).grid(row=0, column=0, padx=10)
 
-        ctk.CTkButton(
+        self.next_button = ctk.CTkButton(
             button_row,
             text="Next",
-            width=120,
+            width=160,
             command=self.next_action
-        ).grid(row=0, column=1, padx=10)
+        )
+        self.next_button.grid(row=0, column=1, padx=10)
 
     # Logic
 
@@ -136,31 +161,70 @@ class QuestionPage(ctk.CTkFrame):
         if not self.selected_options:
             return "No options selected."
 
-        current_topic = self.selected_options[self.current_step - 1]
-        return f"Please provide details regarding {current_topic}:"
+        current_section = self.selected_options[self.current_step - 1]
+        section_questions = self.questions.get(current_section, [])
 
+        if not section_questions:
+            return f"No questions available for {current_section}."
+
+        return section_questions[self.current_question_index]
     def upload_document(self):
         file_path = filedialog.askopenfilename()
         print("Selected file:", file_path)
 
     def next_action(self):
         answer = self.answer_entry.get()
-        #print("Answer:", answer)
 
-        if self.current_step < len(self.selected_options):
-            self.current_step += 1
-            self.answer_entry.delete(0, "end")
-            self.question_label.configure(text=self.get_current_question())
-            self.update_progress()
+        current_section = self.selected_options[self.current_step - 1]
+        section_questions = self.questions.get(current_section, [])
+
+        # Move to next question inside section
+        if self.current_question_index < len(section_questions) - 1:
+            self.current_question_index += 1
+
         else:
-            print("All sections completed!")
+            # Move to next section
+            if self.current_step < len(self.selected_options):
+                self.current_step += 1
+                self.current_question_index = 0
+            else:
+                print("All sections completed!")
+                return
+
+        self.answer_entry.delete(0, "end")
+        self.question_label.configure(text=self.get_current_question())
+        self.update_progress()
+        self.update_next_button_text()
 
     def back_action(self):
-        if self.current_step > 1:
+        if self.current_question_index > 0:
+            self.current_question_index -= 1
+
+        elif self.current_step > 1:
             self.current_step -= 1
-            self.answer_entry.delete(0, "end")
-            # Optionally, you could pre-fill the previous answer if storing it
-            self.question_label.configure(text=self.get_current_question())
-            self.update_progress()
+            previous_section = self.selected_options[self.current_step - 1]
+            self.current_question_index = len(self.questions.get(previous_section, [])) - 1
+
         else:
-            print("Already at the first section.")
+            print("Already at the first question.")
+            return
+
+        self.answer_entry.delete(0, "end")
+        self.question_label.configure(text=self.get_current_question())
+        self.update_progress()
+
+    def update_next_button_text(self):
+        current_section = self.selected_options[self.current_step - 1]
+        section_questions = self.questions.get(current_section, [])
+
+        # If NOT last question in section
+        if self.current_question_index < len(section_questions) - 1:
+            self.next_button.configure(text="Next")
+            return
+
+        # If last question in section
+        if self.current_step < len(self.selected_options):
+            next_section = self.selected_options[self.current_step]
+            self.next_button.configure(text=f"Next: {next_section}")
+        else:
+            self.next_button.configure(text="Finish")
