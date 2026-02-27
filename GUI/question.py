@@ -18,6 +18,9 @@ class QuestionPage(ctk.CTkFrame):
                 "What is your date of birth?",
                 "What is your current address?",
                 "What is your gender?",
+                "Are you a student?",
+                "What is your institution name?",
+                "What is your current GPA?",
                 "Please describe your health history.",
                 "What is your current employment status?"
             ],
@@ -30,6 +33,17 @@ class QuestionPage(ctk.CTkFrame):
                 "Do you have car insurance?",
                 "Do you have renter's insurance?",
                 "Have you filed any claims in the last year?"
+            ],
+            "Scholarships": [
+                "Have you applied for financial aid?",
+                "Are you currently receiving any scholarships?",
+                "What is the total annual scholarship amount?"
+
+            ],
+            "Licenses": [
+                "Do you have access to a student email address?",
+                "Are you enrolled in an accredited institution?"
+                
             ]
         }
 
