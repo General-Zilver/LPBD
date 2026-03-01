@@ -85,6 +85,8 @@ def build_background_command(
     max_workers,
     include_subdomains,
     output_path,
+    max_pages=500,
+    delay=0.3,
 ):
     cmd = [
         sys.executable,
@@ -96,6 +98,10 @@ def build_background_command(
         str(requested_workers),
         "--max-workers",
         str(max_workers),
+        "--max-pages",
+        str(max_pages),
+        "--delay",
+        str(delay),
         "--output",
         str(output_path),
     ]
@@ -113,6 +119,8 @@ def launch_background(
     max_workers,
     include_subdomains,
     output_path,
+    max_pages=500,
+    delay=0.3,
     log_file="",
 ):
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -124,6 +132,8 @@ def launch_background(
         max_workers=max_workers,
         include_subdomains=include_subdomains,
         output_path=output_path,
+        max_pages=max_pages,
+        delay=delay,
     )
 
     creationflags = 0
