@@ -94,19 +94,25 @@ We explicitly define the boundaries of our privacy claims:
     ```bash
     pip install -r requirements.txt
     ```
+    **Setup the register**
 
-3.  **Load the Extension (Developer Mode)**
+    Inside the folder native_host, run:
+    ```bash
+    python setup_host.py
+    ```
+
+4.  **Load the Extension (Developer Mode)**
     * Open Chrome and navigate to `chrome://extensions/`
     * Toggle "Developer mode" (top right).
     * Click "Load unpacked" and select the `extension/` folder in this repo.
 
-4.  **Register Native Host**
+5.  **Register Native Host**
     * Run the registration script to link the extension to the Python app:
     ```bash
-    python register_host.py
+    python host.py
     ```
 
-5.  **Run the Desktop App**
+6.  **Run the Desktop App**
     ```bash
     python main.py
     ```
