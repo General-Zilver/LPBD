@@ -1,0 +1,8 @@
+{
+  "name": "com.lpbd.native.host",
+  "description": "Local Privacy and Benefit Discovery Host",
+  "path": "C:\\Users\\josar\\Documents\\University\\Spring 2026\\CSCI 4390 Senior Project\\LPBD\\native_host\\run_host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://aodckdejdleianbpfaajppcelgembfce/"
+  ]
