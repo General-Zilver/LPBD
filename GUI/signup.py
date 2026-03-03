@@ -24,3 +24,8 @@ def store_users(users):
     with open(Users_names, "w") as file:
         json.dump(users, file)
  
+def login(username, password):
+    users = existing_users()
+    if username in users and users[username] == password:
+        return True
+    return False
