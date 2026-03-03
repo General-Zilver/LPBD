@@ -53,7 +53,7 @@ class LoginPage(ctk.CTkFrame):
         self.password_entry = ctk.CTkEntry(login_card, placeholder_text="Password", show="*", width=300)
         self.password_entry.pack(pady=10, padx=25)
         
-        self.users_confirmation = ctk.CTKLabel(login_card, text="")
+        self.users_confirmation = ctk.CTkLabel(login_card, text="")
         self.users_confirmation.pack(pady=10, padx=25)
 
         # Frame for "Forgot Password?" button aligned right
@@ -79,6 +79,6 @@ class LoginPage(ctk.CTkFrame):
             password = self.password_entry.get()
 
             if sign_up(username, password): 
-                self.users_confirmation(text="Account Created", text_color="blue")
+                self.users_confirmation.configure(text="Account Created", text_color="blue")
             else:
-                self.users_connfirmation(text="Username in use, try again", text_color="red")
+                self.users_confirmation.configure(text="Username in use, try again", text_color="red")
