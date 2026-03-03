@@ -26,8 +26,7 @@ class LoginPage(ctk.CTkFrame):
             top_bar,
             text="Sign Up",
             command=self.sign_up_button
-        )
-        self.sign_up_button.grid(row=0, column=2, padx=20, pady=15, sticky="e")
+        ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
 
     def create_login_card(self):
         center_frame = ctk.CTkFrame(self)
@@ -74,11 +73,11 @@ class LoginPage(ctk.CTkFrame):
 
         ctk.CTkButton(login_card, text="Login", width=300, height=35).pack(pady=25, padx=25)
 
-        def sign_up_button(self):
-            username = self.username_entry.get()
-            password = self.password_entry.get()
+    def sign_up_button(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
 
             if sign_up(username, password): 
-                self.users_confirmation.configure(text="Account Created", text_color="blue")
+                self.users_confirmation(text="Account Created", text_color="blue")
             else:
-                self.users_confirmation.configure(text="Username in use, try again", text_color="red")
+                self.users_connfirmation(text="Username in use, try again", text_color="red")
