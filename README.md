@@ -95,6 +95,7 @@ We explicitly define the boundaries of our privacy claims:
     pip install -r requirements.txt
     ```
     **Setup the register**
+
     Inside the folder native_host, run:
     ```bash
     python setup_host.py
