@@ -12,10 +12,10 @@ class App(ctk.CTk):
         self.geometry("650x500")
 
         # Load login page
-        #login_page = LoginPage(self)
-        #login_page.pack(fill="both", expand=True)
-        forgot_page = ForgotPage(self)
-        forgot_page.pack(fill="both", expand=True)
+        login_page = LoginPage(self)
+        login_page.pack(fill="both", expand=True)
+        #forgot_page = ForgotPage(self)
+        #forgot_page.pack(fill="both", expand=True)
         #main_page = WelcomePage(self)
         #main_page.pack(fill="both", expand=True)
         #question_page = QuestionPage(self, ["Profile","Health", "Insurance","Scholarships", "Licenses"])

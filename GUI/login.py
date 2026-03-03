@@ -71,11 +71,17 @@ class LoginPage(ctk.CTkFrame):
             command=lambda: print("Forgot Password clicked")
         ).pack(side="right")
 
-        ctk.CTkButton(login_card, text="Login", width=300, height=35).pack(pady=25, padx=25)
+        ctk.CTkButton(
+            login_card, 
+            text="Login", 
+            width=300, height=35, 
+            command=lambda: print("Login clicked")
+        ).pack(pady=25, padx=25)
 
     def sign_up_button(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
+
 
         if sign_up(username, password): 
             self.users_confirmation.configure(text="Account Created", text_color="blue")
