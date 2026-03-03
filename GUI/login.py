@@ -77,7 +77,7 @@ class LoginPage(ctk.CTkFrame):
         username = self.username_entry.get()
         password = self.password_entry.get()
 
-            if sign_up(username, password): 
-                self.users_confirmation(text="Account Created", text_color="blue")
-            else:
-                self.users_connfirmation(text="Username in use, try again", text_color="red")
+        if sign_up(username, password): 
+            self.users_confirmation.configure(text="Account Created", text_color="blue")
+        else:
+            self.users_confirmation.configure(text="Username in use, try again", text_color="red")
