@@ -3,6 +3,7 @@
 requests
 beautifulsoup4
 ultimate-sitemap-parser
+lxml
 
 # --- The Desktop App (GUI & Database) ---
 customtkinter  # UI
