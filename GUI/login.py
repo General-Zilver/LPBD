@@ -1,4 +1,4 @@
-from GUI.main import WelcomePage
+from main import WelcomePage
 import customtkinter as ctk
 from signup import sign_up
 from signup import login
