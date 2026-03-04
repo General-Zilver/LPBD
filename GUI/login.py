@@ -1,5 +1,7 @@
+from GUI.main import WelcomePage
 import customtkinter as ctk
 from signup import sign_up
+from signup import login
 
 class LoginPage(ctk.CTkFrame):
     def __init__(self, parent):
@@ -71,12 +73,7 @@ class LoginPage(ctk.CTkFrame):
             command=lambda: print("Forgot Password clicked")
         ).pack(side="right")
 
-        ctk.CTkButton(
-            login_card, 
-            text="Login", 
-            width=300, height=35, 
-            command=lambda: print("Login clicked")
-        ).pack(pady=25, padx=25)
+        ctk.CTkButton(login_card, text="Login", width=300, height=35, command=self.login_button).pack(pady=25, padx=25)
 
     def sign_up_button(self):
         username = self.username_entry.get()
@@ -87,3 +84,18 @@ class LoginPage(ctk.CTkFrame):
             self.users_confirmation.configure(text="Account Created", text_color="blue")
         else:
             self.users_confirmation.configure(text="Username in use, try again", text_color="red")
+
+    def login_button(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+
+        if login(username, password):
+            print("Login successful")
+
+            welcome_page = WelcomePage(self.master)
+            welcome_page.pack(fill="both", expand=True)
+            
+            self.pack_forget()  
+        else:
+            print("Invalid username or password")
+            self.users_confirmation.configure(text="Invalid username or password", text_color="red")
