@@ -98,18 +98,19 @@ We explicitly define the boundaries of our privacy claims:
 
     Inside the folder native_host, run:
     ```bash
-    python setup_host.py
+    python native_host/setup_host.py
     ```
 
 4.  **Load the Extension (Developer Mode)**
     * Open Chrome and navigate to `chrome://extensions/`
     * Toggle "Developer mode" (top right).
     * Click "Load unpacked" and select the `extension/` folder in this repo.
+    * Enter the Extension ID from chrome://extensions 
 
 5.  **Register Native Host**
     * Run the registration script to link the extension to the Python app:
     ```bash
-    python host.py
+    python native_host/host.py
     ```
 
 6.  **Run the Desktop App**
