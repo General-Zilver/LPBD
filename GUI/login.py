@@ -70,7 +70,7 @@ class LoginPage(ctk.CTkFrame):
             height=30,
             fg_color="transparent",
             hover_color="#E0E0E0",
-            command=lambda: print("Forgot Password clicked")
+            command=self.go_to_forgot
         ).pack(side="right")
 
         ctk.CTkButton(login_card, text="Login", width=300, height=35, command=self.login_button).pack(pady=25, padx=25)
@@ -99,3 +99,10 @@ class LoginPage(ctk.CTkFrame):
         else:
             print("Invalid username or password")
             self.users_confirmation.configure(text="Invalid username or password", text_color="red")
+
+    def go_to_forgot(self):
+        from forgot_password import ForgotPasswordPage
+
+        forgot_page = ForgotPasswordPage(self.master)
+        forgot_page.pack(fill="both", expand=True)
+        self.pack_forget()

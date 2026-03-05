@@ -1,5 +1,8 @@
+from GUI import answers
+from GUI.answers import save_answers
 import customtkinter as ctk
 from tkinter import filedialog
+from chat_page import ChatPage
 from settings import SettingsOverlay
 
 class QuestionPage(ctk.CTkFrame):
@@ -191,9 +194,18 @@ class QuestionPage(ctk.CTkFrame):
         print("Selected file:", file_path)
 
     def next_action(self):
+        from answers import save_answers
+       
         answer = self.answer_entry.get()
-
+      
+        question = self.get_current_question()
+       
         current_section = self.selected_options[self.current_step - 1]
+       
+        username = "default_user"  # Replace with actual username logic
+        #save the answer
+        save_answers(username, question, current_section, answer)
+        #move to next question/section
         section_questions = self.questions.get(current_section, [])
 
         # Move to next question inside section
@@ -207,6 +219,10 @@ class QuestionPage(ctk.CTkFrame):
                 self.current_question_index = 0
             else:
                 print("All sections completed!")
+
+                chat_page = ChatPage(self.master)
+                chat_page.pack(fill="both", expand=True)
+                self.pack_forget()
                 return
 
         self.answer_entry.delete(0, "end")
