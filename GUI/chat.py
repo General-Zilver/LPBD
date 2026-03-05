@@ -1,4 +1,6 @@
 import customtkinter as ctk
+from settings import SettingsOverlay
+
 class ChatPage(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent)
@@ -23,8 +25,12 @@ class ChatPage(ctk.CTkFrame):
 
         ctk.CTkButton(
             top_bar,
-            text="Settings"
+            text="Settings",
+            command=self.open_settings
         ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
+    
+    def open_settings(self):
+        SettingsOverlay(self.master, self)
 
     def create_chat_area(self):
         self.chat_frame = ctk.CTkScrollableFrame(self)

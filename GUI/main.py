@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from settings import SettingsOverlay
 from question import QuestionPage
 
 class WelcomePage(ctk.CTkFrame):
@@ -24,8 +25,12 @@ class WelcomePage(ctk.CTkFrame):
 
         ctk.CTkButton(
             top_bar,
-            text="Settings"
+            text="Settings",
+            command=self.open_settings
         ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
+
+    def open_settings(self):
+            SettingsOverlay(self.master, self)
 
     def handle_selection(self):
         selected_options = []

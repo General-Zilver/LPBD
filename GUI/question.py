@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from tkinter import filedialog
-
+from settings import SettingsOverlay
 
 class QuestionPage(ctk.CTkFrame):
     def __init__(self, parent, selected_options):
@@ -81,11 +81,15 @@ class QuestionPage(ctk.CTkFrame):
         # Settings Button
         ctk.CTkButton(
             top_bar,
-            text="Settings"
+            text="Settings",
+            command=self.open_settings
         ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
 
         self.update_progress()
 
+    def open_settings(self):
+        SettingsOverlay(self.master, self)
+    
     def update_progress(self):
         total_steps = len(self.selected_options)
 
