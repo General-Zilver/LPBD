@@ -105,6 +105,7 @@ We explicitly define the boundaries of our privacy claims:
     * Open Chrome and navigate to `chrome://extensions/`
     * Toggle "Developer mode" (top right).
     * Click "Load unpacked" and select the `extension/` folder in this repo.
+    * Enter the Extension ID from chrome://extensions 
 
 5.  **Register Native Host**
     * Run the registration script to link the extension to the Python app:
