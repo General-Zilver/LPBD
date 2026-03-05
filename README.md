@@ -98,7 +98,7 @@ We explicitly define the boundaries of our privacy claims:
 
     Inside the folder native_host, run:
     ```bash
-    python setup_host.py
+    python native_host/setup_host.py
     ```
 
 4.  **Load the Extension (Developer Mode)**
