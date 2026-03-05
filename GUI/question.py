@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from tkinter import filedialog
+from chat_page import ChatPage
 
 
 class QuestionPage(ctk.CTkFrame):
@@ -189,6 +190,10 @@ class QuestionPage(ctk.CTkFrame):
                 self.current_question_index = 0
             else:
                 print("All sections completed!")
+
+                chat_page = ChatPage(self.master)
+                chat_page.pack(fill="both", expand=True)
+                self.pack_forget()
                 return
 
         self.answer_entry.delete(0, "end")

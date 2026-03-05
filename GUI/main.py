@@ -40,6 +40,8 @@ class WelcomePage(ctk.CTkFrame):
             selected_options.append("Scholarships")
         if self.other_var.get() == "on":
             selected_options.append("Other")
+        
+        return selected_options
 
     def create_content(self):
         main_frame = ctk.CTkFrame(self)
@@ -136,5 +138,11 @@ class WelcomePage(ctk.CTkFrame):
             text="Select",
             font=ctk.CTkFont(size=16, weight="bold"),
             height=40,
-            command=self.handle_selection
+            command=self.to_question_page
         ).pack(pady=(0, 10))
+
+    def to_question_page(self):
+        selected_options = self.handle_selection()
+        question_page = QuestionPage(self.master, selected_options)
+        question_page.pack(fill="both", expand=True)
+        self.pack_forget()
