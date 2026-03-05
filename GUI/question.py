@@ -99,7 +99,7 @@ class QuestionPage(ctk.CTkFrame):
 
         current_section = self.selected_options[self.current_step - 1]
         self.progress_label.configure(
-            text=f"Step {self.current_step} of {total_steps}: {current_section}"
+            text=f"Section {self.current_step} of {total_steps}: {current_section}"
         )
     # Content
 
