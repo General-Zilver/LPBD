@@ -1,8 +1,8 @@
-from GUI import answers
-from GUI.answers import save_answers
+#from GUI import answers
+from answers import save_answers
 import customtkinter as ctk
 from tkinter import filedialog
-from chat_page import ChatPage
+from chat import ChatPage
 from settings import SettingsOverlay
 
 class QuestionPage(ctk.CTkFrame):
