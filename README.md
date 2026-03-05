@@ -109,7 +109,7 @@ We explicitly define the boundaries of our privacy claims:
 5.  **Register Native Host**
     * Run the registration script to link the extension to the Python app:
     ```bash
-    python host.py
+    python native_host/host.py
     ```
 
 6.  **Run the Desktop App**
