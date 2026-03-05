@@ -1,2 +1,6 @@
 @echo off
-python -u "C:\Users\josar\Documents\University\Spring 2026\CSCI 4390 Senior Project\LPBD\native_host\host.py"
+:: Navigate to the directory where this batch file is located
+cd /d "%~dp0"
+
+:: Launch Python in unbuffered mode using the relative path to host.py
+python -u "host.py"
