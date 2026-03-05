@@ -1,3 +1,5 @@
+from GUI import answers
+from GUI.answers import save_answers
 import customtkinter as ctk
 from tkinter import filedialog
 from chat_page import ChatPage
@@ -188,9 +190,18 @@ class QuestionPage(ctk.CTkFrame):
         print("Selected file:", file_path)
 
     def next_action(self):
+        from answers import save_answers
+       
         answer = self.answer_entry.get()
-
+      
+        question = self.get_current_question()
+       
         current_section = self.selected_options[self.current_step - 1]
+       
+        username = "default_user"  # Replace with actual username logic
+        #save the answer
+        save_answers(username, question, current_section, answer)
+        #move to next question/section
         section_questions = self.questions.get(current_section, [])
 
         # Move to next question inside section
