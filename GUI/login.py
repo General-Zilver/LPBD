@@ -1,5 +1,7 @@
+from main import WelcomePage
 import customtkinter as ctk
 from signup import sign_up
+from signup import login
 
 class LoginPage(ctk.CTkFrame):
     def __init__(self, parent):
@@ -26,8 +28,7 @@ class LoginPage(ctk.CTkFrame):
             top_bar,
             text="Sign Up",
             command=self.sign_up_button
-        )
-        self.sign_up_button.grid(row=0, column=2, padx=20, pady=15, sticky="e")
+        ).grid(row=0, column=2, padx=20, pady=15, sticky="e")
 
     def create_login_card(self):
         center_frame = ctk.CTkFrame(self)
@@ -53,7 +54,7 @@ class LoginPage(ctk.CTkFrame):
         self.password_entry = ctk.CTkEntry(login_card, placeholder_text="Password", show="*", width=300)
         self.password_entry.pack(pady=10, padx=25)
         
-        self.users_confirmation = ctk.CTKLabel(login_card, text="")
+        self.users_confirmation = ctk.CTkLabel(login_card, text="")
         self.users_confirmation.pack(pady=10, padx=25)
 
         # Frame for "Forgot Password?" button aligned right
@@ -69,16 +70,39 @@ class LoginPage(ctk.CTkFrame):
             height=30,
             fg_color="transparent",
             hover_color="#E0E0E0",
-            command=lambda: print("Forgot Password clicked")
+            command=self.go_to_forgot
         ).pack(side="right")
 
-        ctk.CTkButton(login_card, text="Login", width=300, height=35).pack(pady=25, padx=25)
+        ctk.CTkButton(login_card, text="Login", width=300, height=35, command=self.login_button).pack(pady=25, padx=25)
 
-        def sign_up_button(self):
-            username = self.username_entry.get()
-            password = self.password_entry.get()
+    def sign_up_button(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
 
-            if sign_up(username, password): 
-                self.users_confirmation(text="Account Created", text_color="blue")
-            else:
-                self.users_connfirmation(text="Username in use, try again", text_color="red")
+
+        if sign_up(username, password): 
+            self.users_confirmation.configure(text="Account Created", text_color="blue")
+        else:
+            self.users_confirmation.configure(text="Username in use, try again", text_color="red")
+
+    def login_button(self):
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+
+        if login(username, password):
+            print("Login successful")
+
+            welcome_page = WelcomePage(self.master)
+            welcome_page.pack(fill="both", expand=True)
+            
+            self.pack_forget()  
+        else:
+            print("Invalid username or password")
+            self.users_confirmation.configure(text="Invalid username or password", text_color="red")
+
+    def go_to_forgot(self):
+        from forgot_password import ForgotPasswordPage
+
+        forgot_page = ForgotPasswordPage(self.master)
+        forgot_page.pack(fill="both", expand=True)
+        self.pack_forget()

@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -12,20 +13,8 @@ import requests
 from bs4 import BeautifulSoup
 from batch_workers import launch_background, resolve_worker_count, should_run_in_background
 
-# Keywords that indicate pages likely related to student benefits/resources.
-KEYWORDS_TO_KEEP = [
-    "aid", "grant", "scholarship", "loan", "work-study",
-    "health", "clinic", "wellness", "counseling", "support",
-    "service", "resource", "pantry", "transportation",
-    "discount", "free", "waiver", "stipend", "funding",
-    "eligibility", "deadline", "apply", "benefit", "housing",
-]
-
-KEYWORDS_TO_IGNORE = [
-    "news", "event", "calendar", "archive", "athletics",
-    "staff", "faculty", "directory", "profile", "minutes",
-    "policy", "handbook", "login", "auth", "twitter", "facebook", "instagram",
-]
+# Identifies us in request headers so site admins can see who's hitting their server.
+USER_AGENT = "UTRGV-StudentBenefitMapper/0.2 (+https://github.com/General-Zilver/LPBD)"
 
 # File types to skip while collecting URLs so crawl scope stays page-focused.
 SKIP_EXTENSIONS = {
@@ -36,6 +25,28 @@ SKIP_EXTENSIONS = {
 OUTPUT_FILE = Path(__file__).resolve().parent / "mapped_pages.json"
 
 
+# Custom session that actually enforces a timeout on every request.
+# requests.Session doesn't have a built-in timeout property, so if you just do
+# session.timeout = 10 it does nothing. This subclass injects a default timeout
+# into every request so we never accidentally wait forever on a hung server.
+class _TimeoutSession(requests.Session):
+    def __init__(self, timeout=10):
+        super().__init__()
+        self._default_timeout = timeout
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", self._default_timeout)
+        return super().request(*args, **kwargs)
+
+
+# Builds a session with our User-Agent and timeout baked in.
+# Every request through this session gets connection pooling, our UA header,
+# and a real enforced timeout without having to pass them in every single call.
+def _build_session(timeout=10):
+    session = _TimeoutSession(timeout=timeout)
+    session.headers.update({"User-Agent": USER_AGENT})
+    return session
+
 # Normalizes the starting host and strips a leading "www." for root-domain matching.
 def get_root_host(url):
     host = urlparse(url).netloc.lower()
@@ -44,7 +55,7 @@ def get_root_host(url):
     return host
 
 
-# Checks whether a host is the root domain or one of its subdomains.
+# Checks if a hostname belongs to the same domain we started with (or one of its subdomains).
 def is_allowed_host(host, root_host, include_subdomains=True):
     host = (host or "").lower()
     root_host = (root_host or "").lower()
@@ -92,13 +103,16 @@ def extract_same_domain_links(base_url, html, include_subdomains=True):
     return links
 
 
-# Tries common sitemap locations (plus robots.txt) and returns allowed page URLs.
-def fetch_sitemap_urls(base_url, timeout=10, include_subdomains=True):
+# Looks for sitemaps in the usual places (sitemap.xml, robots.txt) and collects every
+# page URL it can find. Handles both regular sitemaps and sitemap indexes that point
+# to other sitemaps. Returns an empty set if the site doesn't have one.
+def fetch_sitemap_urls(base_url, session=None, include_subdomains=True):
+    session = session or _build_session()
     base_clean = base_url.rstrip("/")
     candidates = [f"{base_clean}/sitemap.xml", f"{base_clean}/sitemap_index.xml"]
 
     try:
-        robots = requests.get(f"{base_clean}/robots.txt", timeout=timeout)
+        robots = session.get(f"{base_clean}/robots.txt")
         if robots.ok:
             for line in robots.text.splitlines():
                 if line.lower().startswith("sitemap:"):
@@ -118,7 +132,7 @@ def fetch_sitemap_urls(base_url, timeout=10, include_subdomains=True):
         seen_sitemaps.add(sitemap_url)
 
         try:
-            response = requests.get(sitemap_url, timeout=timeout)
+            response = session.get(sitemap_url)
             response.raise_for_status()
         except requests.RequestException:
             continue
@@ -135,7 +149,7 @@ def fetch_sitemap_urls(base_url, timeout=10, include_subdomains=True):
                     continue
                 seen_sitemaps.add(child_sitemap)
                 try:
-                    child_resp = requests.get(child_sitemap, timeout=timeout)
+                    child_resp = session.get(child_sitemap)
                     child_resp.raise_for_status()
                 except requests.RequestException:
                     continue
@@ -163,75 +177,91 @@ def fetch_sitemap_urls(base_url, timeout=10, include_subdomains=True):
     return collected_urls
 
 
-# Performs a bounded 2-level crawl: homepage links, then links from those pages.
-def minimal_depth2_crawl(
-    base_url,
-    timeout=8,
-    max_home_links=60,
-    max_second_pages=30,
-    include_subdomains=True,
-):
-    discovered = set()
+# Crawls a domain starting from the homepage using breadth-first search.
+# Sitemap URLs go into `results` (discovered for free) but NOT into `visited`, so BFS
+# can still reach them organically to extract their outgoing links and find pages the
+# sitemap missed. Stops when the queue is empty or we hit the max page limit.
+# Waits between requests so we don't hammer the server.
+def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
+              max_pages=500, delay=0.3):
+    session = session or _build_session()
+    results = set(preseed or set())   # sitemap URLs count as discovered already
+    visited = set()                   # tracks what we've actually fetched
+    queue = deque([base_url])         # always start from the homepage
+    pages_fetched = 0
 
-    # Level 0 -> Level 1: collect links on the homepage.
-    home_resp = requests.get(base_url, timeout=timeout)
-    home_resp.raise_for_status()
-    level1_links = sorted(
-        extract_same_domain_links(base_url, home_resp.text, include_subdomains=include_subdomains)
-    )[:max_home_links]
-    discovered.update(level1_links)
+    while queue and pages_fetched < max_pages:
+        current_url = queue.popleft()
 
-    # Level 1 -> Level 2: collect links from each first-level page.
-    for page_url in level1_links[:max_second_pages]:
+        # Don't fetch the same page twice, but a sitemap URL we haven't fetched yet is fair game.
+        if current_url in visited:
+            continue
+        visited.add(current_url)
+
         try:
-            resp = requests.get(page_url, timeout=timeout)
+            resp = session.get(current_url)
             resp.raise_for_status()
-            discovered.update(
-                extract_same_domain_links(base_url, resp.text, include_subdomains=include_subdomains)
-            )
         except requests.RequestException:
             continue
 
-    return discovered
+        pages_fetched += 1
+        results.add(current_url)
+
+        new_links = extract_same_domain_links(
+            base_url, resp.text, include_subdomains=include_subdomains
+        )
+
+        for link in new_links:
+            if link not in visited:
+                results.add(link)
+                queue.append(link)
+
+        if delay > 0:
+            time.sleep(delay)
+
+    return results, pages_fetched
 
 
-# Applies keyword include/exclude rules to keep only relevant benefit-oriented URLs.
-def filter_relevant(urls):
-    relevant = []
-    for page_url in urls:
-        page_url_lower = page_url.lower()
-        if any(keyword in page_url_lower for keyword in KEYWORDS_TO_KEEP):
-            if not any(ignore in page_url_lower for ignore in KEYWORDS_TO_IGNORE):
-                relevant.append(page_url)
-    return sorted(relevant)
-
-
-# Orchestrates discovery: sitemap first, then bounded crawl fallback, then filtering.
-def map_domain(url, include_subdomains=True):
+# Runs the full discovery pipeline for a single domain. First tries the sitemap to get
+# a head start for free, then BFS crawls from the homepage to find anything the sitemap
+# missed. Returns everything we found in one result dict.
+def map_domain(url, include_subdomains=True, max_pages=500, delay=0.3):
     print(f"Mapping {url}...")
+    session = _build_session()
 
     try:
-        sitemap_urls = fetch_sitemap_urls(url, include_subdomains=include_subdomains)
-        if sitemap_urls:
-            source = "sitemap"
-            raw_urls = sitemap_urls
-            print(f"   Sitemap found. Collected {len(raw_urls)} URLs.")
-        else:
-            source = "minimal_depth2_crawl"
-            print("   No sitemap found. Running bounded 2-level crawl...")
-            raw_urls = minimal_depth2_crawl(url, include_subdomains=include_subdomains)
-            print(f"   Crawl collected {len(raw_urls)} URLs.")
+        # Step 1: Try to grab the sitemap for a free head start.
+        sitemap_urls = fetch_sitemap_urls(url, session=session, include_subdomains=include_subdomains)
+        sitemap_count = len(sitemap_urls)
 
-        relevant_urls = filter_relevant(raw_urls)
+        if sitemap_urls:
+            print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs.")
+        else:
+            print("   No sitemap found. BFS will do all discovery.")
+
+        # Step 2: BFS from homepage. Sitemap URLs are pre-seeded into results but can
+        # still be visited for their outgoing links if BFS reaches them naturally.
+        all_urls, pages_fetched = bfs_crawl(
+            base_url=url,
+            preseed=sitemap_urls,
+            session=session,
+            include_subdomains=include_subdomains,
+            max_pages=max_pages,
+            delay=delay,
+        )
+
+        crawl_found = len(all_urls) - sitemap_count
+        print(f"   BFS fetched {pages_fetched} pages, discovered {crawl_found} additional URLs.")
 
         return {
             "status": "success",
             "domain": url,
             "include_subdomains": include_subdomains,
-            "discovery_method": source,
-            "raw_count": len(raw_urls),
-            "found_count": len(relevant_urls),
-            "urls": relevant_urls,
+            "sitemap_count": sitemap_count,
+            "crawl_pages_fetched": pages_fetched,
+            "crawl_additional": crawl_found,
+            "found_count": len(all_urls),
+            "urls": sorted(all_urls),
         }
     except Exception as e:
         return {
@@ -241,14 +271,12 @@ def map_domain(url, include_subdomains=True):
             "message": str(e),
         }
 
-
+# Returns the current time in UTC ISO format for consistent metadata timestamps.
 def _timestamp_utc():
-    # Returns the current time in UTC ISO format for consistent metadata timestamps.
     return datetime.now(timezone.utc).isoformat()
 
-
+# Builds the default JSON structure used when starting a new mapped_pages file.
 def _empty_mapped_payload():
-    # Builds the default JSON structure used when starting a new mapped_pages file.
     return {
         "schema_version": 2,
         "updated_at": _timestamp_utc(),
@@ -256,9 +284,10 @@ def _empty_mapped_payload():
         "domains": {},
     }
 
-
+# Reads an existing output file and makes sure it's in the current multi-domain format.
+# If someone has an old single-domain file from before, this wraps it into the new shape.
 def _load_mapped_payload(raw_text):
-    # Reads existing JSON text and normalizes it into the shared multi-domain schema.
+
     if not raw_text.strip():
         return _empty_mapped_payload()
 
@@ -282,10 +311,11 @@ def _load_mapped_payload(raw_text):
 
     return _empty_mapped_payload()
 
-
+# Locks the output file before we read/write so multiple workers don't step on each other.
+# Works on both Windows (msvcrt) and Linux/Mac (fcntl).
 @contextmanager
 def _exclusive_file_lock(path):
-    # Opens and locks the output file so concurrent writers do not corrupt shared JSON.
+
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+", encoding="utf-8") as handle:
         if os.name == "nt":
@@ -312,9 +342,9 @@ def _exclusive_file_lock(path):
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-
+# Saves or updates a single domain's results into the shared output file.
+# Handles the lock-read-modify-write cycle so it's safe to call from multiple threads.
 def upsert_domain_result(result, output_path=OUTPUT_FILE):
-    # Creates or updates a single domain section in the shared mapped_pages JSON file.
     output_path = Path(output_path)
 
     with _exclusive_file_lock(output_path) as handle:
@@ -335,21 +365,25 @@ def upsert_domain_result(result, output_path=OUTPUT_FILE):
         json.dump(payload, handle, indent=2)
         handle.flush()
 
+# Maps a list of domains, optionally in parallel, and writes each result to the output file
+# as soon as it finishes. Falls back to one-at-a-time if there's only one domain.
+def map_domains_batch(domains, include_subdomains=True, workers=1,
+                      max_pages=500, delay=0.3, output_path=OUTPUT_FILE):
 
-def map_domains_batch(domains, include_subdomains=True, workers=1, output_path=OUTPUT_FILE):
-    # Maps many domains and writes each completed result into one shared output file.
     workers = max(1, min(workers, len(domains)))
 
     if workers == 1:
         for domain in domains:
-            result = map_domain(domain, include_subdomains=include_subdomains)
+            result = map_domain(domain, include_subdomains=include_subdomains,
+                                max_pages=max_pages, delay=delay)
             upsert_domain_result(result, output_path=output_path)
             _print_result_summary(result, output_path)
         return
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(map_domain, domain, include_subdomains): domain
+            executor.submit(map_domain, domain, include_subdomains,
+                            max_pages, delay): domain
             for domain in domains
         }
         for future in as_completed(futures):
@@ -357,13 +391,14 @@ def map_domains_batch(domains, include_subdomains=True, workers=1, output_path=O
             upsert_domain_result(result, output_path=output_path)
             _print_result_summary(result, output_path)
 
-
+# Prints a quick summary after each domain finishes so you can see progress in the terminal
 def _print_result_summary(result, output_path):
-    # Prints a concise per-domain summary after each mapping job finishes.
     if result["status"] == "success":
         print(
-            f"Success ({result['domain']} | {result['discovery_method']}). "
-            f"Found {result['found_count']} benefit pages from {result['raw_count']} discovered URLs."
+            f"Success ({result['domain']}). "
+            f"Sitemap: {result['sitemap_count']} | "
+            f"BFS: {result['crawl_additional']} new from {result['crawl_pages_fetched']} fetched | "
+            f"Total: {result['found_count']} URLs."
         )
         print(f"Saved/updated {output_path}")
 
@@ -373,9 +408,8 @@ def _print_result_summary(result, output_path):
     else:
         print(f"Failed ({result.get('domain', 'unknown')}): {result['message']}")
 
-
+# Sets up all the command-line flags so you can control domains, concurrency, crawl depth, etc.
 def _parse_args():
-    # Defines command-line options for domain list, concurrency, scope, and output file.
     parser = argparse.ArgumentParser(description="Map one or more domains into a shared mapped_pages.json file.")
     parser.add_argument(
         "domains",
@@ -393,6 +427,18 @@ def _parse_args():
         type=int,
         default=5,
         help="Upper safety limit for worker auto-tuning.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=500,
+        help="Max pages to fetch per domain during BFS (default: 500).",
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.3,
+        help="Seconds to wait between requests during BFS (default: 0.3).",
     )
     parser.add_argument(
         "--no-subdomains",
@@ -445,6 +491,8 @@ if __name__ == "__main__":
             max_workers=max_workers,
             include_subdomains=include_subdomains,
             output_path=output_file,
+            max_pages=args.max_pages,
+            delay=args.delay,
             log_file=args.log_file,
         )
         print(f"Started background mapper process PID {pid}.")
@@ -458,5 +506,7 @@ if __name__ == "__main__":
         domains=targets,
         include_subdomains=include_subdomains,
         workers=resolved_workers,
+        max_pages=args.max_pages,
+        delay=args.delay,
         output_path=output_file,
     )
