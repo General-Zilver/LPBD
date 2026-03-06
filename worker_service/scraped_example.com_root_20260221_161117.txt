@@ -1,0 +1,6 @@
+﻿URL: https://example.com
+TITLE: Example Domain
+CHECKED_AT: 1771711877.144664
+CACHE_HIT: False
+
+Example Domain Example Domain This domain is for use in documentation examples without needing permission. Avoid use in operations. Learn more
