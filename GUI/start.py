@@ -1,28 +1,11 @@
 import customtkinter as ctk
-from login import LoginPage
-from main import WelcomePage
-from question import QuestionPage
-from chat import ChatPage
-from forgot import ForgotPage
+from controller import AppController
 
-class App(ctk.CTk):
-    def __init__(self):
-        super().__init__()
-        self.title("Student Benefit Analyzer")
-        self.geometry("650x500")
+ctk.set_appearance_mode("dark")
 
-        # Load login page
-        login_page = LoginPage(self)
-        login_page.pack(fill="both", expand=True)
-        #forgot_page = ForgotPage(self)
-        #forgot_page.pack(fill="both", expand=True)
-        #main_page = WelcomePage(self)
-        #main_page.pack(fill="both", expand=True)
-        #question_page = QuestionPage(self, ["Profile","Health", "Insurance"])
-        #question_page.pack(fill="both", expand=True)
-        #chat_page = ChatPage(self)
-        #chat_page.pack(fill="both", expand=True)
+root = ctk.CTk()
+root.geometry("900x600")
 
-if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+app = AppController(root)
+
+root.mainloop()

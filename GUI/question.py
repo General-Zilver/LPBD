@@ -1,19 +1,27 @@
-#from GUI import answers
 from answers import save_answers
 import customtkinter as ctk
 from tkinter import filedialog
 from chat import ChatPage
 from settings import SettingsOverlay
 
+
 class QuestionPage(ctk.CTkFrame):
-    def __init__(self, parent, selected_options):
+
+    def __init__(self, parent, controller, selected_options):
         super().__init__(parent)
+        self.controller = controller
+        self.update_mode = False 
+        self.targer_question = None 
+
+        if selected_options is None:
+            selected_options = controller.session.get("selected_options",[])
 
         self.selected_options = selected_options
         self.current_step = 1
-
-        # Questions:
         self.current_question_index = 0
+
+        # Store answers in memory before writing JSON
+        self.user_answers = {}
 
         self.questions = {
             "Profile": [
@@ -41,12 +49,10 @@ class QuestionPage(ctk.CTkFrame):
                 "Have you applied for financial aid?",
                 "Are you currently receiving any scholarships?",
                 "What is the total annual scholarship amount?"
-
             ],
             "Licenses": [
                 "Do you have access to a student email address?",
                 "Are you enrolled in an accredited institution?"
-                
             ]
         }
 
@@ -56,24 +62,25 @@ class QuestionPage(ctk.CTkFrame):
         self.create_top_bar()
         self.create_content()
 
-    #Top bar
+    # -------------------------
+    # Top Bar
+    # -------------------------
 
     def create_top_bar(self):
+
         top_bar = ctk.CTkFrame(self, height=60)
         top_bar.grid(row=0, column=0, sticky="ew")
         top_bar.grid_columnconfigure(1, weight=1)
 
-        # Title
         ctk.CTkLabel(
             top_bar,
             text="Student Benefit Analyzer",
             font=ctk.CTkFont(size=18, weight="bold")
         ).grid(row=0, column=0, padx=20, pady=15, sticky="w")
 
-        # Progress Bar
         self.progress_bar = ctk.CTkProgressBar(top_bar, height=15)
         self.progress_bar.grid(row=1, column=1, padx=20, pady=20, sticky="ew")
-        # Progress Text Label
+
         self.progress_label = ctk.CTkLabel(
             top_bar,
             text="",
@@ -81,7 +88,6 @@ class QuestionPage(ctk.CTkFrame):
         )
         self.progress_label.grid(row=0, column=1, sticky="s", pady=(5, 0))
 
-        # Settings Button
         ctk.CTkButton(
             top_bar,
             text="Settings",
@@ -92,8 +98,9 @@ class QuestionPage(ctk.CTkFrame):
 
     def open_settings(self):
         SettingsOverlay(self.master, self)
-    
+
     def update_progress(self):
+
         total_steps = len(self.selected_options)
 
         if total_steps == 0:
@@ -105,17 +112,21 @@ class QuestionPage(ctk.CTkFrame):
         self.progress_bar.set(progress_value)
 
         current_section = self.selected_options[self.current_step - 1]
+
         self.progress_label.configure(
             text=f"Section {self.current_step} of {total_steps}: {current_section}"
         )
+
+    # -------------------------
     # Content
+    # -------------------------
 
     def create_content(self):
+
         main_frame = ctk.CTkFrame(self)
         main_frame.grid(row=1, column=0, sticky="nsew")
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # Page Title
         ctk.CTkLabel(
             main_frame,
             text="Tell us about yourself!",
@@ -123,20 +134,18 @@ class QuestionPage(ctk.CTkFrame):
             anchor="w"
         ).pack(pady=(30, 10), padx=60, anchor="w")
 
-        # Card Section
         question_card = ctk.CTkFrame(main_frame, corner_radius=15)
         question_card.pack(padx=40, pady=20, fill="both", expand=True)
 
-        # Question Text
         self.question_label = ctk.CTkLabel(
             question_card,
             text=self.get_current_question(),
             font=ctk.CTkFont(size=18, weight="bold"),
             anchor="w"
         )
+
         self.question_label.pack(pady=(25, 15), padx=20, anchor="w")
 
-        # Input Row
         input_row = ctk.CTkFrame(question_card, fg_color="transparent")
         input_row.pack(padx=20, pady=10, fill="x")
 
@@ -156,7 +165,6 @@ class QuestionPage(ctk.CTkFrame):
             command=self.upload_document
         ).grid(row=0, column=1)
 
-        # Bottom Buttons
         button_row = ctk.CTkFrame(question_card, fg_color="transparent")
         button_row.pack(pady=(30, 20))
 
@@ -176,89 +184,169 @@ class QuestionPage(ctk.CTkFrame):
         )
         self.next_button.grid(row=0, column=1, padx=10)
 
-    # Logic
+        self.update_next_button_text()
+
+    # -------------------------
+    # Question Logic
+    # -------------------------
 
     def get_current_question(self):
-        if not self.selected_options:
-            return "No options selected."
+        if not self.selected_options or self.current_step > len(self.selected_options):
+            return "No more questions."
 
         current_section = self.selected_options[self.current_step - 1]
         section_questions = self.questions.get(current_section, [])
 
         if not section_questions:
-            return f"No questions available for {current_section}."
+            return f"No questions for {current_section}"
 
         return section_questions[self.current_question_index]
+
+    # -------------------------
+    # Upload
+    # -------------------------
+
     def upload_document(self):
+
         file_path = filedialog.askopenfilename()
-        print("Selected file:", file_path)
+
+        if file_path:
+            print("Selected file:", file_path)
+
+    # -------------------------
+    # Next Button
+    # -------------------------
 
     def next_action(self):
-        from answers import save_answers
-       
+        
+
         answer = self.answer_entry.get()
-      
         question = self.get_current_question()
-       
         current_section = self.selected_options[self.current_step - 1]
-       
-        username = "default_user"  # Replace with actual username logic
-        #save the answer
+
+        username = "default_user"
+
+        # Save to JSON
         save_answers(username, question, current_section, answer)
-        #move to next question/section
+
+        # Store locally
+        if getattr(self, "update_mode", False):
+            print("Single question updated")
+            self.controller.show_page("chat")
+            return
+        if current_section not in self.user_answers:
+            self.user_answers[current_section] = {}
+
+        self.user_answers[current_section][question] = answer
+
         section_questions = self.questions.get(current_section, [])
 
-        # Move to next question inside section
+        # Next question
         if self.current_question_index < len(section_questions) - 1:
             self.current_question_index += 1
 
         else:
-            # Move to next section
+            # Next section
             if self.current_step < len(self.selected_options):
                 self.current_step += 1
                 self.current_question_index = 0
             else:
                 print("All sections completed!")
+                # Mark questionnaire completed
+                from auth import mark_questionnaire_completed
 
-                chat_page = ChatPage(self.master)
-                chat_page.pack(fill="both", expand=True)
-                self.pack_forget()
+                username = self.controller.session["username"]
+                mark_questionnaire_completed(username)
+
+                # Navigate via controller
+                self.controller.session["questionnaire_completed"] = True  
+                self.controller.show_page("chat")
                 return
 
-        self.answer_entry.delete(0, "end")
-        self.question_label.configure(text=self.get_current_question())
-        self.update_progress()
-        self.update_next_button_text()
+        #self.answer_entry.delete(0, "end")
+        #self.question_label.configure(text=self.get_current_question())
+        self.refresh_current_question()
+        #self.update_progress()
+        #self.update_next_button_text()
+
+    # -------------------------
+    # Back Button
+    # -------------------------
 
     def back_action(self):
+
         if self.current_question_index > 0:
             self.current_question_index -= 1
 
         elif self.current_step > 1:
             self.current_step -= 1
-            previous_section = self.selected_options[self.current_step - 1]
-            self.current_question_index = len(self.questions.get(previous_section, [])) - 1
 
+            previous_section = self.selected_options[self.current_step - 1]
+
+            self.current_question_index = len(
+                self.questions.get(previous_section, [])
+            ) - 1
         else:
-            print("Already at the first question.")
+            print("Already at first question")
             return
 
         self.answer_entry.delete(0, "end")
+
         self.question_label.configure(text=self.get_current_question())
+
         self.update_progress()
+        self.update_next_button_text()
+
+    # -------------------------
+    # Button Text
+    # -------------------------
 
     def update_next_button_text(self):
+
+        # Single question update mode
+        if getattr(self, "update_mode", False):
+            self.next_button.configure(text="Finish")
+            return
+
+        if not self.selected_options or self.current_step > len(self.selected_options):
+            self.next_button.configure(text="Finish")
+            return
+
         current_section = self.selected_options[self.current_step - 1]
         section_questions = self.questions.get(current_section, [])
 
-        # If NOT last question in section
         if self.current_question_index < len(section_questions) - 1:
             self.next_button.configure(text="Next")
             return
 
-        # If last question in section
-        if self.current_step < len(self.selected_options):
+        elif self.current_step < len(self.selected_options):
             next_section = self.selected_options[self.current_step]
             self.next_button.configure(text=f"Next: {next_section}")
         else:
             self.next_button.configure(text="Finish")
+    # Inside QuestionPage class
+    def refresh_current_question(self):
+        if not self.selected_options:
+            self.question_label.configure(text="No section selected")
+            return
+
+        current_section = self.selected_options[self.current_step - 1]
+        section_questions = self.questions.get(current_section, [])
+
+        if not section_questions:
+            self.question_label.configure(text=f"No questions for {current_section}")
+            return
+
+        if self.current_question_index >= len(section_questions):
+            self.question_label.configure(text="No more questions")
+            return
+
+        # Update question label
+        self.question_label.configure(text=section_questions[self.current_question_index])
+        
+        # Clear entry
+        self.answer_entry.delete(0, "end")
+
+        # Update progress bar and button text
+        self.update_progress()
+        self.update_next_button_text()

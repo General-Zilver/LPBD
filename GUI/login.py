@@ -1,11 +1,12 @@
-from main import WelcomePage
 import customtkinter as ctk
-from signup import sign_up
-from signup import login
+from auth import sign_up, login
+
 
 class LoginPage(ctk.CTkFrame):
-    def __init__(self, parent):
+    def __init__(self, parent, controller):
         super().__init__(parent)
+
+        self.controller = controller
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -36,7 +37,6 @@ class LoginPage(ctk.CTkFrame):
         center_frame.grid_rowconfigure(0, weight=1)
         center_frame.grid_columnconfigure(0, weight=1)
 
-        # Increased width and height for a bigger card
         login_card = ctk.CTkFrame(center_frame, width=450, height=450, corner_radius=15)
         login_card.grid(row=0, column=0)
         login_card.grid_propagate(False)
@@ -47,7 +47,6 @@ class LoginPage(ctk.CTkFrame):
             font=ctk.CTkFont(size=24, weight="bold")
         ).pack(pady=(40, 25))
 
-        # Add horizontal padding (padx) so input bars aren't touching the edges
         self.username_entry = ctk.CTkEntry(login_card, placeholder_text="Username", width=300)
         self.username_entry.pack(pady=15, padx=25)
 
@@ -57,9 +56,8 @@ class LoginPage(ctk.CTkFrame):
         self.users_confirmation = ctk.CTkLabel(login_card, text="")
         self.users_confirmation.pack(pady=10, padx=25)
 
-        # Frame for "Forgot Password?" button aligned right
         forgot_frame = ctk.CTkFrame(login_card, fg_color="transparent")
-        forgot_frame.pack(fill="x", pady=(0, 15), padx=25)  # match entry padding
+        forgot_frame.pack(fill="x", pady=(0, 15), padx=25)
 
         ctk.CTkLabel(forgot_frame, text="").pack(side="left", expand=True)
 
@@ -73,14 +71,19 @@ class LoginPage(ctk.CTkFrame):
             command=self.go_to_forgot
         ).pack(side="right")
 
-        ctk.CTkButton(login_card, text="Login", width=300, height=35, command=self.login_button).pack(pady=25, padx=25)
+        ctk.CTkButton(
+            login_card,
+            text="Login",
+            width=300,
+            height=35,
+            command=self.login_button
+        ).pack(pady=25, padx=25)
 
     def sign_up_button(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
 
-
-        if sign_up(username, password): 
+        if sign_up(username, password):
             self.users_confirmation.configure(text="Account Created", text_color="blue")
         else:
             self.users_confirmation.configure(text="Username in use, try again", text_color="red")
@@ -90,19 +93,24 @@ class LoginPage(ctk.CTkFrame):
         password = self.password_entry.get()
 
         if login(username, password):
+
+            # store user in controller session
+            self.controller.session["username"] = username
+
             print("Login successful")
 
-            welcome_page = WelcomePage(self.master)
-            welcome_page.pack(fill="both", expand=True)
-            
-            self.pack_forget()  
+            # determine if user is new
+            if self.controller.is_new_user(username):
+                self.controller.show_page("main")
+            else:
+                self.controller.show_page("chat")
+
         else:
             print("Invalid username or password")
-            self.users_confirmation.configure(text="Invalid username or password", text_color="red")
+            self.users_confirmation.configure(
+                text="Invalid username or password",
+                text_color="red"
+            )
 
     def go_to_forgot(self):
-        from forgot_password import ForgotPasswordPage
-
-        forgot_page = ForgotPasswordPage(self.master)
-        forgot_page.pack(fill="both", expand=True)
-        self.pack_forget()
+        self.controller.show_page("forgot")

@@ -1,8 +1,10 @@
 import customtkinter as ctk
 
 class ForgotPage(ctk.CTkFrame):
-    def __init__(self, parent):
+    def __init__(self, parent, controller):
         super().__init__(parent)
+
+        self.controller = controller
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -54,7 +56,8 @@ class ForgotPage(ctk.CTkFrame):
             reset_card,
             text="Send Reset Link",
             width=300,
-            height=35
+            height=35,
+            command=self.send_reset
         ).pack(pady=15, padx=25)
 
         ctk.CTkButton(
@@ -63,5 +66,14 @@ class ForgotPage(ctk.CTkFrame):
             width=300,
             height=30,
             fg_color="transparent",
-            hover_color="#E0E0E0"
+            hover_color="#E0E0E0",
+            command=self.go_back
         ).pack(pady=(10, 20))
+
+    def send_reset(self):
+        email = self.email_entry.get()
+        print(f"Reset link requested for {email}")
+        # later you can implement actual reset logic here
+
+    def go_back(self):
+        self.controller.show_page("login")
