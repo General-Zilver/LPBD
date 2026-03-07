@@ -113,6 +113,25 @@ We explicitly define the boundaries of our privacy claims:
     python native_host/host.py
     ```
 
+5.  **Run the Scraper**
+
+    Start the scraper API in one terminal:
+    ```bash
+    python -m uvicorn worker_service.scrape:app --host 127.0.0.1 --port 8000 --reload
+    ```
+
+    Then in a second terminal, scrape a page:
+    ```powershell
+    .\worker_service\scrape.ps1 -Url "https://www.utrgv.edu/cost-and-aid/financial-aid/index.htm"
+    ```
+
+    Use `-ForceRefresh` to bypass the weekly cache:
+    ```powershell
+    .\worker_service\scrape.ps1 -Url "https://www.utrgv.edu/cost-and-aid/financial-aid/index.htm" -ForceRefresh
+    ```
+
+    Output is saved to `worker_service/scraped_<domain>_<path>_<timestamp>.txt`.
+
 6.  **Run the Desktop App**
     ```bash
     python main.py
