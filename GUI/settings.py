@@ -26,7 +26,7 @@ class SettingsOverlay(ctk.CTkFrame):
         ).pack(pady=20, padx=20, anchor="w")
 
         # Show Update Form only if user has completed questionnaire
-        if getattr(self.controller, "session", {}).get("questionnaire_completed", True):
+        if getattr(self.controller, "session", {}).get("questionnaire_completed", True) and self.controller.__class__.__name__ == "AppController":
             ctk.CTkButton(
                 self,
                 text="Update Form",
@@ -44,6 +44,7 @@ class SettingsOverlay(ctk.CTkFrame):
         ).pack(pady=20, padx=20, anchor="s")
 
     def click_outside(self, event):
+        print (self.controller.__class__.__name__)
         if not self.winfo_exists():
             return
         x1, y1 = self.winfo_rootx(), self.winfo_rooty()
@@ -51,7 +52,8 @@ class SettingsOverlay(ctk.CTkFrame):
         if not (x1 <= event.x_root <= x2 and y1 <= event.y_root <= y2):
             self.destroy_overlay()
     def load_user_answers(self):
-        username = self.controller.session.get("username")
+        session = getattr(self.controller, "session", {})
+        username = session.get("username")
         filepath = "answers.json"
         if not os.path.exists(filepath):
             return {}
