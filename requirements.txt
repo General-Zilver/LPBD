@@ -6,7 +6,6 @@ uvicorn[standard]
 pydantic
 requests
 beautifulsoup4
-ultimate-sitemap-parser
 lxml
 
 # --- Desktop App (GUI) ---
