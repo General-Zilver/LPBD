@@ -1,13 +1,27 @@
 import customtkinter as ctk
 from tkinter import filedialog
 from settings import SettingsOverlay
+import threading
+import json
+import sys
+from pathlib import Path
+
+# Add project root so we can import ollama_client
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import ollama_client
 
 
 class ChatPage(ctk.CTkFrame):
 
-    def __init__(self, parent,controller):
+    def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.conversation = []
+        self.sending = False
+
+        # Load user profile and matched benefits for LLM context
+        self.user_profile = self._load_answers()
+        self.benefits_context = self._load_benefits()
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -15,6 +29,56 @@ class ChatPage(ctk.CTkFrame):
         self.create_top_bar()
         self.create_chat_area()
         self.create_input_bar()
+
+    # Loads answers.json to give the LLM the student's profile info
+    def _load_answers(self):
+        candidates = [
+            Path(__file__).resolve().parent.parent / "answers.json",
+            Path(__file__).resolve().parent / "answers.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if not data:
+                        continue
+                    # answers.json is {username: {question: {section: answer}}}
+                    # grab the first (or current) user's answers
+                    username = next(iter(data))
+                    answers = data[username]
+                    lines = []
+                    for question, section_map in answers.items():
+                        for section, answer in section_map.items():
+                            if answer:
+                                lines.append(f"- {question} {answer}")
+                    if lines:
+                        return "\n".join(lines)
+                except Exception:
+                    pass
+        return None
+
+    # Loads matched_benefits.json to give the LLM context about the user's benefits
+    def _load_benefits(self):
+        candidates = [
+            Path(__file__).resolve().parent.parent / "matched_benefits.json",
+            Path(__file__).resolve().parent / "matched_benefits.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        benefits = json.load(f)
+                    if benefits:
+                        summary = []
+                        for b in benefits[:20]:
+                            name = b.get("benefit_name", "Unknown")
+                            desc = b.get("description", "")
+                            summary.append(f"- {name}: {desc}")
+                        return "\n".join(summary)
+                except Exception:
+                    pass
+        return None
 
     # -----------------------
     # Top Bar
@@ -122,45 +186,57 @@ class ChatPage(ctk.CTkFrame):
 
         send_btn.grid(row=0, column=2, padx=(5, 10), pady=10)
 
-    # -----------------------
-    # Chat Logic
-    # -----------------------
-
+    # Sends the user's message and kicks off an Ollama call in a background thread
     def send_message(self, event=None):
-
         message = self.message_entry.get().strip()
-
-        if message == "":
+        if message == "" or self.sending:
             return
 
         self.add_message(message, sender="user")
-
         self.message_entry.delete(0, "end")
+        self.sending = True
+        self.add_message("Thinking...", sender="system")
 
-        # Placeholder system response
-        response = self.generate_response(message)
+        # Build the system prompt with benefit context if available
+        system_msg = "You are a helpful student benefit advisor. Answer questions clearly and concisely."
+        if self.benefits_context:
+            system_msg += f"\n\nHere are the student's matched benefits:\n{self.benefits_context}"
 
-        self.add_message(response, sender="system")
+        self.conversation.append({"role": "user", "content": message})
 
-    # -----------------------
-    # Basic AI Response
-    # -----------------------
+        thread = threading.Thread(target=self._call_ollama, daemon=True)
+        thread.start()
 
-    def generate_response(self, message):
+    # Runs in a background thread so the GUI doesn't freeze
+    def _call_ollama(self):
+        try:
+            system_content = "You are a helpful student benefit advisor. Answer questions clearly and concisely."
+            if self.user_profile:
+                system_content += f"\n\nHere is the student's profile:\n{self.user_profile}"
+            if self.benefits_context:
+                system_content += f"\n\nHere are the student's matched benefits:\n{self.benefits_context}"
+            messages = [{"role": "system", "content": system_content}]
+            messages.extend(self.conversation)
 
-        message = message.lower()
+            reply = ollama_client.chat(messages)
+            self.conversation.append({"role": "assistant", "content": reply})
+            self.after(0, lambda: self._show_reply(reply))
+        except ConnectionError:
+            self.after(0, lambda: self._show_reply(
+                "Ollama is not running. Please start it and make sure phi3:mini is pulled:\n"
+                "  ollama pull phi3:mini"
+            ))
+        except Exception as e:
+            self.after(0, lambda: self._show_reply(f"Error: {e}"))
 
-        if "benefit" in message:
-            return "I can help you find student benefits based on your profile."
-
-        elif "scholarship" in message:
-            return "You may qualify for several scholarship programs."
-
-        elif "insurance" in message:
-            return "Some insurance discounts may apply to students."
-
-        else:
-            return "Ask me about scholarships, benefits, or student programs."
+    # Updates the UI with the LLM response (replaces the "Thinking..." bubble)
+    def _show_reply(self, text):
+        self.sending = False
+        # Remove the "Thinking..." bubble (last widget in chat_frame)
+        children = self.chat_frame.winfo_children()
+        if children:
+            children[-1].destroy()
+        self.add_message(text, sender="system")
 
     # -----------------------
     # File Upload
