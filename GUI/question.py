@@ -11,7 +11,7 @@ class QuestionPage(ctk.CTkFrame):
         super().__init__(parent)
         self.controller = controller
         self.update_mode = False 
-        self.targer_question = None 
+        self.target_question = None 
 
         if selected_options is None:
             selected_options = controller.session.get("selected_options",[])
@@ -27,32 +27,61 @@ class QuestionPage(ctk.CTkFrame):
             "Profile": [
                 "What is your full legal name?",
                 "What is your date of birth?",
-                "What is your current address?",
+                "What county and zip code do you live in?",
                 "What is your gender?",
-                "Are you a student?",
-                "What is your institution name?",
-                "What is your current GPA?",
-                "Please describe your health history.",
-                "What is your current employment status?"
+                "Are you a U.S citizen or permanent resident?",
+                "What is your residency status?(In-state/ Out-of-state/ International)",
+                "Are you a veteran or active-duty military?",
+                "Do you have dependents?",
+                "Are you a first-generation college student?",
             ],
-            "Health": [
+            "Academic": [    
+                "What is your institution name?",
+                "What is your current year/classification? (Freshman / Sophomore / Junior / Senior / Graduate)",
+                "Are you enrolled full-time or part-time?",
+                "What is your major or intended major?",
+                "What is your current GPA?",
+                "Do you have access to a student email address?",
+                "Are you enrolled in an accredited institution?"
+            ],
+            "Health & Wellness": [
                 "Do you currently have health insurance?",
-                "Are you covered under a parent/guardian plan?",
-                "Do you take any regular medications?"
+                "Are you covered under a parent or guardian's plan?",
+                "Do you take any regular medications?",
+                "Do you have a disability registered with your institution?",
+                "Are you registered with your campus health center?",
+                "Are you aware of campus mental health or counseling services?"
             ],
             "Insurance": [
                 "Do you have car insurance?",
                 "Do you have renter's insurance?",
                 "Have you filed any claims in the last year?"
             ],
-            "Scholarships": [
-                "Have you applied for financial aid?",
+            "Financial Aid & Scholarships": [
+                "What is your current employment status?",
+                "What is your estimated household income range? (Under $20k / $20k-$40k / $40k-$60k / $60k-$80k / $80k+)",
+                "Have you completed the FAFSA for this academic year?",
+                "Do you know your Student Aid Index (SAI) or expected family contribution?",
+                "Are you Pell Grant eligible?",
+                "Have you received work-study funding?",
                 "Are you currently receiving any scholarships?",
-                "What is the total annual scholarship amount?"
+                "If yes, what is the total annual scholarship amount?",
+                "Are you aware of departmental scholarships specific to your major?",
+                "Have you visited your campus financial aid office this academic year?"
             ],
-            "Licenses": [
-                "Do you have access to a student email address?",
-                "Are you enrolled in an accredited institution?"
+            "Housing & Food": [
+                "Do you live on campus, off campus, or with family?",
+                "Do you currently have a meal plan?",
+                "Have you experienced food insecurity during your time as a student?",
+                "Have you experienced housing insecurity during your time as a student?",
+            ],
+            "Technology & Access": [
+                "Do you have a personal laptop or computer?",
+                "Do you have reliable internet access at home?",
+                "Are you aware of any software or hardware programs offered by your institution?"
+            ],
+            "Other": [
+                "Is there anything else about your situation that you think might be relevant to finding benefits? (open text field)"
             ]
         }
 
@@ -62,10 +91,7 @@ class QuestionPage(ctk.CTkFrame):
         self.create_top_bar()
         self.create_content()
 
-    # -------------------------
     # Top Bar
-    # -------------------------
-
     def create_top_bar(self):
 
         top_bar = ctk.CTkFrame(self, height=60)
@@ -117,10 +143,7 @@ class QuestionPage(ctk.CTkFrame):
             text=f"Section {self.current_step} of {total_steps}: {current_section}"
         )
 
-    # -------------------------
     # Content
-    # -------------------------
-
     def create_content(self):
 
         main_frame = ctk.CTkFrame(self)
@@ -186,10 +209,7 @@ class QuestionPage(ctk.CTkFrame):
 
         self.update_next_button_text()
 
-    # -------------------------
     # Question Logic
-    # -------------------------
-
     def get_current_question(self):
         if not self.selected_options or self.current_step > len(self.selected_options):
             return "No more questions."
@@ -202,10 +222,7 @@ class QuestionPage(ctk.CTkFrame):
 
         return section_questions[self.current_question_index]
 
-    # -------------------------
     # Upload
-    # -------------------------
-
     def upload_document(self):
 
         file_path = filedialog.askopenfilename()
@@ -213,10 +230,7 @@ class QuestionPage(ctk.CTkFrame):
         if file_path:
             print("Selected file:", file_path)
 
-    # -------------------------
     # Next Button
-    # -------------------------
-
     def next_action(self):
         
 
@@ -265,14 +279,17 @@ class QuestionPage(ctk.CTkFrame):
 
         #self.answer_entry.delete(0, "end")
         #self.question_label.configure(text=self.get_current_question())
+        self.current_question_index = max(0, self.current_question_index)
         self.refresh_current_question()
+        self.update_progress()
+        self.update_next_button_text()
+        print("Q Index:", self.current_question_index)
+        print("Step:", self.current_step)
+        print("Section:", self.selected_options[self.current_step - 1])
         #self.update_progress()
         #self.update_next_button_text()
 
-    # -------------------------
     # Back Button
-    # -------------------------
-
     def back_action(self):
 
         if self.current_question_index > 0:
@@ -297,10 +314,7 @@ class QuestionPage(ctk.CTkFrame):
         self.update_progress()
         self.update_next_button_text()
 
-    # -------------------------
     # Button Text
-    # -------------------------
-
     def update_next_button_text(self):
 
         # Single question update mode
