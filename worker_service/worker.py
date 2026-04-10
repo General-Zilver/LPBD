@@ -20,14 +20,10 @@ from .pack_store import (
 # Normalize HTML into stable plain text so hash comparisons are reliable.
 def _normalize_text(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
-    for tag in soup(["script", "style", "noscript", "nav", "footer", "header", "aside", "form", "button"]):
+    for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    main = soup.find("main")
-    if main:
-        text = main.get_text(" ", strip=True)
-    else:
-        text = soup.get_text(" ", strip=True)
-    return text
+    return " ".join(soup.get_text(" ", strip=True).split())
+
 
 # Pull the page title safely; return empty string when missing.
 def _page_title(html_text: str) -> str:
@@ -89,8 +85,8 @@ def get_or_build_pack(
             return True, cached["pack"], [], []
 
     if not acquire_domain_lock(domain):
-        print(f"[WARN] Lock busy for {domain}, continuing anyway...")
-   
+        return False, [], [], [{"url": domain, "error": "Timed out waiting for domain rebuild lock"}]
+
     unchanged_urls: List[str] = []
     errors: List[Dict[str, str]] = []
     pack_pages: List[Dict[str, Any]] = []

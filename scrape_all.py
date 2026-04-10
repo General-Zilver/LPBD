@@ -84,7 +84,7 @@ def scrape_domain(domain_url, url_list, api_url, timeout_s=30):
             "force_refresh": False,
             "client_has_pack": False,
             "timeout_s": timeout_s,
-            "rate_limit_ms": 800, #was 300
+            "rate_limit_ms": 300,
         },
     }
     resp = requests.post(api_url, json=payload, timeout=600)
@@ -98,7 +98,7 @@ def save_results(domain_url, result, output_dir):
 
     host = urlparse(domain_url).netloc.replace(".", "_")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filepath = output_dir / f"scraped_{host}_chunk_{stamp}.txt"
+    filepath = output_dir / f"scraped_{host}_{stamp}.txt"
 
     lines = [
         f"Domain: {result['domain']}",
@@ -122,9 +122,6 @@ def save_results(domain_url, result, output_dir):
     filepath.write_text("\n".join(lines), encoding="utf-8")
     return filepath
 
-def chunk_list(lst, size):
-    for i in range(0, len(lst), size):
-        yield lst[i:i + size]
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape all mapped domain pages.")
@@ -175,58 +172,30 @@ def main():
 
             print(f"[{i}/{len(mapped)}] Scraping {domain} ({len(urls)} pages)...")
 
-            CHUNK_SIZE = 25
+            try:
+                result = scrape_domain(domain, urls, api_url)
 
-            domain_scraped = 0
-            domain_errors = 0
+                scraped = len(result["changed_pages"])
+                unchanged = len(result["unchanged_urls"])
+                errors = len(result["errors"])
+                total_scraped += scraped
+                total_errors += errors
 
-            for chunk_idx, chunk in enumerate(chunk_list(urls, CHUNK_SIZE), 1):
-                print(f"  → Chunk {chunk_idx}: {len(chunk)} pages")
+                print(f"  Scraped: {scraped} | Unchanged: {unchanged} | Errors: {errors}")
 
-                try:
-                    #result = scrape_domain(domain, chunk, api_url)
-                    MAX_RETRIES = 5
+                if result["errors"]:
+                    for err in result["errors"]:
+                        print(f"    - {err['url']}: {err['error']}")
 
-                    for attempt in range(MAX_RETRIES):
-                        try:
-                            result = scrape_domain(domain, chunk, api_url)
-                            break
-                        except Exception as exc:
-                            if "rebuild lock" in str(exc).lower():
-                                print(f"     ⏳ Lock hit, retrying... ({attempt+1}/{MAX_RETRIES})")
-                                time.sleep(5)
-                            else:
-                                raise
-                    else:
-                        raise Exception("Max retries exceeded due to lock")
-                    scraped = len(result["changed_pages"])
-                    unchanged = len(result["unchanged_urls"])
-                    errors = len(result["errors"])
+                if result["changed_pages"]:
+                    filepath = save_results(domain, result, args.output_dir)
+                    print(f"  Saved to: {filepath}\n")
+                else:
+                    print(f"  No new content to save.\n")
 
-                    domain_scraped += scraped
-                    domain_errors += errors
-
-                    total_scraped += scraped
-                    total_errors += errors
-
-                    print(f"     Scraped: {scraped} | Unchanged: {unchanged} | Errors: {errors}")
-
-                    if result["errors"]:
-                        for err in result["errors"][:5]:  # limit spam
-                            print(f"       - {err['url']}: {err['error']}")
-
-                    if result["changed_pages"]:
-                        filepath = save_results(domain, result, args.output_dir)
-                        print(f"     Saved chunk to: {filepath}")
-
-                except Exception as exc:
-                    print(f"     Chunk failed: {exc}")
-                    domain_errors += 1
-                    total_errors += 1
-
-                time.sleep(3)  # optional but recommended
-
-            print(f"  ✅ Domain total scraped: {domain_scraped} | errors: {domain_errors}\n")
+            except Exception as exc:
+                print(f"  Failed: {exc}\n")
+                total_errors += 1
 
         print(f"=== Scraping Complete ===")
         print(f"Domains processed: {len(mapped)}")
