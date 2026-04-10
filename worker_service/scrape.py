@@ -1,12 +1,20 @@
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .worker import get_or_build_pack
 
-app = FastAPI(title="Ephemeral Scrape Worker")
+# matching module lives one level up from worker_service/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from matching.controller import (
+    get_status, run_single_page, update_match_status,
+)
+
+app = FastAPI(title="LPBD Worker")
 
 
 # One page entry from the client request, including optional prior validators.
@@ -72,3 +80,52 @@ def scrape(req: ScrapeRequest) -> ScrapeResponse:
         changed_pages=[ChangedPage(**p) for p in pack_pages],
         errors=errors,
     )
+
+
+# -- matching endpoints ----------------------------------------------------
+
+# Request body for single-page real-time matching.
+class RealtimeMatchRequest(BaseModel):
+    user: str
+    url: str
+    model: str = "phi3:mini"
+
+
+# Request body for updating a match's status.
+class StatusUpdateRequest(BaseModel):
+    status: str  # new | seen | dismissed | saved
+
+
+@app.get("/matching/status/{user}")
+# Returns the full results envelope for a user.
+def matching_status(user: str):
+    return get_status(user)
+
+
+@app.patch("/matching/results/{match_id}")
+# Updates a single match result's status.
+def matching_update(match_id: str, req: StatusUpdateRequest):
+    try:
+        found = update_match_status(match_id, req.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Match '{match_id}' not found")
+    return {"match_id": match_id, "status": req.status}
+
+
+@app.post("/matching/realtime")
+# Fetches a single URL, matches it against the user's profile, and
+# returns the match results immediately.
+def matching_realtime(req: RealtimeMatchRequest):
+    try:
+        results = run_single_page(req.user, req.url, model=req.model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return {
+        "url": req.url,
+        "results": [r.to_dict() for r in results],
+        "count": len(results),
+    }

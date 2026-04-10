@@ -7,6 +7,7 @@
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -20,6 +21,27 @@ import requests
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_INPUT = PROJECT_ROOT / "mapped_pages.json"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "scraped_output"
+
+
+# Reads custom pages (kind='page') from the native host DB.
+# These are full URLs the user explicitly added via the extension popup,
+# and they bypass the mapper entirely.
+def load_custom_pages():
+    candidates = [
+        PROJECT_ROOT / "native_host" / "local_benefits.db",
+        PROJECT_ROOT / "local_benefits.db",
+    ]
+    for path in candidates:
+        if path.exists():
+            conn = sqlite3.connect(str(path))
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT value FROM web_history WHERE kind = 'page'"
+                ).fetchall()
+                return [row[0] for row in rows]
+            finally:
+                conn.close()
+    return []
 
 
 # Spins up uvicorn as a subprocess and polls until it's responding.
@@ -129,10 +151,10 @@ def main():
                         help="Path to mapped_pages.json")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
                         help="Directory for scraped output files")
-    parser.add_argument("--max-pages", type=int, default=20,
-                        help="Max pages to scrape per domain (default: 20)")
+    parser.add_argument("--max-pages", type=int, default=None,
+                        help="Limit pages to scrape per domain (default: all)")
     parser.add_argument("--all", action="store_true",
-                        help="Scrape all mapped pages (overrides --max-pages)")
+                        help="(Deprecated, now the default) Scrape all mapped pages")
     parser.add_argument("--port", type=int, default=8000,
                         help="Port for the scrape worker")
     args = parser.parse_args()
@@ -149,11 +171,22 @@ def main():
         print("No successfully mapped domains found. Nothing to scrape.")
         sys.exit(1)
 
+    # Merge in custom pages from the native host DB (user-added URLs)
+    custom_pages = load_custom_pages()
+    if custom_pages:
+        for page_url in custom_pages:
+            domain = f"{urlparse(page_url).scheme}://{urlparse(page_url).netloc}"
+            if domain not in mapped:
+                mapped[domain] = []
+            if page_url not in mapped[domain]:
+                mapped[domain].append(page_url)
+        print(f"Added {len(custom_pages)} custom page(s) from native host DB.")
+
     total_urls = sum(len(urls) for urls in mapped.values())
     print(f"Loaded {len(mapped)} domain(s) with {total_urls} total URLs.")
 
-    if not args.all:
-        print(f"Using --max-pages {args.max_pages} per domain (pass --all for full scrape).\n")
+    if args.max_pages:
+        print(f"Using --max-pages {args.max_pages} per domain.\n")
     else:
         print("Scraping ALL mapped pages.\n")
 
@@ -167,7 +200,7 @@ def main():
 
     try:
         for i, (domain, urls) in enumerate(mapped.items(), 1):
-            if not args.all:
+            if args.max_pages:
                 urls = urls[:args.max_pages]
 
             print(f"[{i}/{len(mapped)}] Scraping {domain} ({len(urls)} pages)...")
