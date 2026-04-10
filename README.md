@@ -1,4 +1,4 @@
-# Student Benefit Discovery & Privacy App
+﻿# Local Privacy Benefit Discovery (LPBD)
 
 ### CSCI 4390 Senior Project | University of Texas Rio Grande Valley
 
@@ -6,177 +6,212 @@
 ![UI](https://img.shields.io/badge/UI-CustomTkinter-orange)
 ![Privacy](https://img.shields.io/badge/Privacy-Local_First-green)
 
-## Project Overview
+## What This Project Does
 
-**The Problem:** Students miss out on thousands of dollars in benefits—scholarships, financial aid (FAFSA), university grants, and health resources—because the information is scattered across complex websites and privacy policies they rarely read. Using current AI tools to find these benefits often requires uploading sensitive personal data to third-party servers.
+LPBD helps students discover scholarships, aid, and support services while keeping personal profile data local.
 
-**The Solution:** We are building a **Local-First Student Benefit Analyzer**. Our application runs on the student's desktop, using an interactive form to collect profile data that is **encrypted and stored locally**. A companion browser extension identifies relevant university and scholarship domains, which are processed by **stateless cloud workers** (mapper and scraper) to find new opportunities without ever exposing the student's private profile. A local LLM matches scraped benefits against the student's profile entirely on-device.
+End-to-end flow:
 
-## The Team
+1. Chrome extension collects relevant `.edu` and `.gov` domains (plus optional custom pages).
+2. Native host stores those items in a local SQLite DB.
+3. `map.py` discovers pages on each domain and writes `mapped_pages.json`.
+4. `scrape_all.py` scrapes mapped pages and writes text files into `scraped_output/`.
+5. `match_it.py` runs the keyword-gated matching pipeline with Ollama and writes `matched_benefits.json`.
+6. GUI lets users fill questionnaire data and chat locally with the model.
 
-* **Josue Aranday**
-* **John Payes**
-* **Alejandro Salinas**
-* **Kevin Gonzalez**
+## Repo Layout
 
-**Faculty Adviser:** Pedro Fonseca
+- `browser_extension/`: Manifest V3 Chrome extension (domain/page collection, queueing, native messaging).
+- `native_host/`: Chrome native messaging host (`host.py`, `setup_host.py`, local DB).
+- `mapper/`: Domain mapper (sitemap + BFS crawler).
+- `worker_service/`: FastAPI scraper worker with caching/change-detection.
+- `matching/`: Keyword pre-filtering, LLM matching, validation, and keyword fallback detection.
+- `GUI/`: Desktop app (login/signup/questionnaire/chat).
+- `map.py`, `scrape_all.py`, `match_it.py`: top-level pipeline controllers.
 
----
+## Prerequisites
 
-## Architecture: Split-Architecture Model
+- Python 3.10+
+- Google Chrome
+- Ollama installed locally: https://ollama.com/download
+- Windows for automatic native host setup (`native_host/setup_host.py` uses Windows registry)
 
-We utilize a **Split-Architecture** that keeps user data local while offloading heavy web crawling and scraping to stateless workers designed for cloud deployment.
-
-### 1. Desktop App (CustomTkinter)
-* **Interface:** A modern, high-DPI desktop application built with **CustomTkinter**.
-* **Function:** Users fill out a secure profile (GPA, major, financial needs, citizenship, etc.). This data is stored in an **encrypted local database**.
-* **Matching:** A local LLM (**Ollama** with phi3:mini) compares the user's profile against scraped benefit data entirely on-device — personal data never leaves the machine.
-* **Chat:** An AI chat page lets the user ask follow-up questions about their matched benefits using the same local LLM.
-
-### 2. Browser Extension (Manifest V3)
-* **Privacy-First Collection:** The extension does not track full browsing history. It passively collects **relevant `.edu` and `.gov` domains** from the user's browsing using simple heuristics.
-* **Throttling:** Each domain has a 1-week cooldown to avoid redundant submissions, with a 200-item queue cap and periodic retry.
-* **Native Messaging:** The extension communicates **only** with the local Desktop App via Chrome Native Messaging. No browsing data is sent to the cloud.
-
-### 3. Native Host (Chrome NM Bridge)
-* **Protocol:** Reads/writes length-prefixed JSON over stdin/stdout per the Chrome Native Messaging spec.
-* **Storage:** Stores collected domains and browsing items in a local **SQLite** database (`local_benefits.db`).
-* **Setup:** `setup_host.py` dynamically configures the NM manifest and registry entry for the current machine.
-
-### 4. Mapper (`mapper/`)
-* **Purpose:** Discovers all relevant pages on a given domain using a two-phase approach: **sitemap pre-seeding** (free URL discovery from sitemap.xml) followed by **BFS crawl** to find pages sitemaps missed.
-* **Output:** Produces `mapped_pages.json` — a mapping of domains to their discovered page URLs.
-* **Design:** Stateless worker with resource-aware tuning (CPU/RAM detection). Designed for cloud deployment; currently runs locally for development and testing.
-
-### 5. Scraper (`worker_service/`)
-* **Purpose:** A **FastAPI** app that scrapes mapped pages and extracts clean text content.
-* **Change Detection:** Three-layer system — weekly pack cache, conditional HTTP headers (ETag / If-Modified-Since), and SHA-256 content hashing — so unchanged pages are skipped efficiently.
-* **Design:** Ephemeral, stateless worker with minimal retention. Designed for cloud deployment as a serverless function; currently runs locally for development and testing.
-
-### 6. Benefit Matcher (`match.py`)
-* **Purpose:** Reads the user's profile from `answers.json` and all scraped text from `scraped_output/`, then sends chunks to the local **Ollama** LLM to identify matching benefits.
-* **Output:** Produces `matched_benefits.json` — a deduplicated list of benefits with names, descriptions, eligibility, and source URLs.
-* **Privacy:** The LLM runs entirely on-device via Ollama (localhost:11434). No personal data is transmitted.
-
----
-
-## Full Pipeline
-
-```
-Browser Extension
-    → Native Host (SQLite DB)
-        → map.py (controller) → mapped_pages.json
-            → scrape_all.py (controller) → scraped_output/
-                → match.py (controller) → matched_benefits.json
-                    → GUI chat (Ollama-powered)
-```
-
-Each stage communicates via files or databases — no direct imports between components.
-
----
-
-## Technology Stack
-
-### Core Application
-* **Language:** Python 3.10+
-* **GUI Framework:** [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter)
-* **Local Database:** SQLite
-* **Local LLM:** [Ollama](https://ollama.com/) with phi3:mini (2.3 GB)
-
-### Browser Integration
-* **Target:** Google Chrome / Chromium
-* **Manifest:** V3
-* **Mechanism:** Chrome Native Messaging API
-
-### Web Scraping
-* **API Framework:** FastAPI + uvicorn
-* **HTML Parsing:** BeautifulSoup4
-* **Page Discovery:** BFS crawl + sitemap XML parsing
-
----
-
-## Privacy Manifesto
-
-1. **Local Profiling:** The user's financial and academic profile **never** leaves the local device. The cloud workers only see domains and URLs to scrape, not the reason why.
-2. **Local LLM:** Benefit matching and chat are powered by Ollama running on localhost. No data is sent to external AI services.
-3. **Ephemeral Processing:** Cloud scraping workers are stateless and do not persist request payloads or scraped content beyond processing.
-4. **No Long-Term Log:** The extension keeps only a local, short-term list of candidate domains. It does not upload browsing history.
-
----
-
-## Getting Started
-
-### Prerequisites
-* Python 3.10 or higher
-* Google Chrome (for extension)
-* [Ollama](https://ollama.com/) installed with the phi3:mini model
-* Git
-
-### Installation
-
-1. **Clone the Repository**
-    ```bash
-    git clone https://github.com/General-Zilver/LPBD.git
-    cd LPBD
-    ```
-
-2. **Install Python Dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3. **Install Ollama and pull the model**
-    ```bash
-    ollama pull phi3:mini
-    ```
-
-4. **Set up the Native Host**
-    ```bash
-    python native_host/setup_host.py
-    ```
-    Follow the prompts to enter your Chrome extension ID.
-
-5. **Load the Browser Extension**
-    * Open Chrome → `chrome://extensions/`
-    * Toggle "Developer mode" (top right)
-    * Click "Load unpacked" and select the `browser_extension/` folder
-    * Copy the Extension ID and use it in step 4 if you haven't already
-
-### Running the Pipeline
-
-Once the extension has collected some domains, run each stage in order:
+Install Python deps:
 
 ```bash
-# 1. Map domains from the extension's DB into page URLs
-python map.py                        # maps all collected domains
-python map.py --max-pages 50         # limit pages per domain for faster runs
+pip install -r requirements.txt
+```
 
-# 2. Scrape all mapped pages (auto-starts the scraper API)
-python scrape_all.py                 # default: 20 pages per domain
-python scrape_all.py --all           # scrape everything
-python scrape_all.py --max-pages 5   # limit for quick demo
+Pull required Ollama models:
 
-# 3. Match scraped benefits against the user's profile
-python match.py                      # requires answers.json from the GUI questionnaire
+```bash
+ollama pull llama3:8b
+```
 
-# 4. Launch the desktop app
+Optional (only needed for realtime single-page mode in `match.py --url`):
+
+```bash
+ollama pull nomic-embed-text
+```
+
+## Step-By-Step: First Full Run
+
+### 1. Clone and enter repo
+
+```bash
+git clone https://github.com/General-Zilver/LPBD.git
+cd LPBD
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Install Ollama models
+
+```bash
+ollama pull llama3:8b
+```
+
+Optional for realtime single-page mode:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+### 4. Run GUI once to create questionnaire answers
+
+```bash
 python GUI/start.py
 ```
 
----
+Complete login + questionnaire flow.
 
-## Roadmap
+### 5. Load extension in Chrome
 
-- [x] **Phase 1: UI Prototype** — CustomTkinter desktop app with login, signup, questionnaire, and chat pages.
-- [x] **Phase 2: Extension + Native Host** — Manifest V3 extension with Chrome Native Messaging bridge and SQLite storage.
-- [x] **Phase 3: Mapper** — BFS + sitemap crawler for page discovery, with resource-aware worker tuning.
-- [x] **Phase 4: Scraper** — FastAPI ephemeral worker with three-layer change detection and weekly pack caching.
-- [x] **Phase 5: Local LLM Integration** — Ollama-powered benefit matching and chat, entirely on-device.
-- [x] **Phase 6: Pipeline Controllers** — `map.py`, `scrape_all.py`, and `match.py` for end-to-end demo workflow.
-- [ ] **Phase 7: Cloud Deployment** — Deploy mapper and scraper as serverless cloud workers with weekly sync scheduling.
-- [ ] **Phase 8: Database Encryption** — Implement SQLCipher encryption for the local profile database.
+1. Open `chrome://extensions/`
+2. Turn on Developer mode
+3. Click Load unpacked
+4. Select `browser_extension/`
+5. Copy the extension ID
 
----
+### 6. Register native host (Windows)
+
+```bash
+python native_host/setup_host.py
+```
+
+When prompted, paste the extension ID from step 5.
+
+### 7. Collect some browsing data
+
+With extension enabled, browse a few `.edu` / `.gov` pages.
+
+Optional check:
+
+```bash
+python domains.py
+```
+
+### 8. Run pipeline controllers in order
+
+```bash
+python map.py
+python scrape_all.py
+python match_it.py --user default_user
+```
+
+### 9. Open GUI chat/results view
+
+```bash
+python GUI/start.py
+```
+
+## What Each Pipeline Step Produces
+
+| Step | Script | Reads | Writes |
+|---|---|---|---|
+| Domain map | `map.py` | `native_host/local_benefits.db` (or `local_benefits.db`) | `mapped_pages.json` |
+| Scrape | `scrape_all.py` | `mapped_pages.json` (+ custom pages in DB) | `scraped_output/scraped_*.txt` |
+| Match | `match_it.py --user default_user` | `answers.json`, `scraped_output/` | `pipeline_state.json`, `matched_benefits.json` |
+
+## Main Runtime Files
+
+- `answers.json`: questionnaire answers used for matching.
+- `native_host/local_benefits.db`: collected domain/page queue persisted by native host.
+- `mapped_pages.json`: mapper output (domain -> discovered URLs).
+- `scraped_output/*.txt`: normalized page text from scraper.
+- `embeddings.json`: optional cache used by realtime single-page matching (`match.py --url`).
+- `pipeline_state.json`: current/last pipeline stage metadata.
+- `matched_benefits.json`: final results envelope (`results` list plus pipeline metadata).
+
+## Useful Commands
+
+```bash
+# Show captured domains/pages
+python domains.py
+
+# Show all DB rows
+python domains.py --all
+
+# Clear all captured domain/page rows
+python domains.py --clear
+
+# Faster map test
+python map.py --max-pages 50 --delay 0.1
+
+# Scrape only first N pages per mapped domain
+python scrape_all.py --max-pages 5
+
+# Verbose matching output
+python match_it.py --user default_user --verbose
+
+# Use a different model
+python match_it.py --user default_user --model phi3:mini
+```
+
+## Quick Test Without Chrome Extension
+
+If you want to test pipeline mechanics without native host data:
+
+1. Map a domain directly with mapper:
+
+```bash
+python mapper/mapper.py https://www.utrgv.edu --mode foreground --workers 1 --output mapped_pages.json
+```
+
+2. Run scrape + match:
+
+```bash
+python scrape_all.py
+python match_it.py --user default_user
+```
+
+## Troubleshooting
+
+- `local_benefits.db not found`:
+  - Run `python native_host/setup_host.py`
+  - Make sure extension is loaded and has sent at least one item
+- `No domains found in the database`:
+  - Browse `.edu` / `.gov` sites with extension enabled, then run `python domains.py`
+- `No answers found for user ...`:
+  - Use `python match_it.py --user default_user`
+  - Verify `answers.json` exists
+- `Ollama is not running`:
+  - Start Ollama app or run `ollama serve`
+- `Model ... not found`:
+  - Pull it, for example `ollama pull llama3:8b`
+
+## Team
+
+- Josue Aranday
+- John Payes
+- Alejandro Salinas
+- Kevin Gonzalez
+
+Faculty Adviser: Pedro Fonseca
 
 ## License
 

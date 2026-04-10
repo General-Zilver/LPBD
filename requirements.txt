@@ -8,6 +8,9 @@ requests
 beautifulsoup4
 lxml
 
+# --- Matching Pipeline ---
+psutil
+
 # --- Desktop App (GUI) ---
 customtkinter
 packaging

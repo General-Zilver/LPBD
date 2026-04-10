@@ -1,10 +1,12 @@
 # ollama_client.py -- Talks to the local Ollama server for LLM inference.
-# Used by match.py for benefit matching and by the GUI chat page.
+# Used by match.py for benefit matching, the GUI chat page, and the
+# matching pipeline embedder.
 
 import requests
 
 OLLAMA_BASE = "http://localhost:11434"
-DEFAULT_MODEL = "phi3:mini"
+DEFAULT_MODEL = "llama3:8b"
+EMBED_MODEL = "nomic-embed-text"
 
 
 # Checks if Ollama is running and the requested model is pulled.
@@ -67,3 +69,49 @@ def chat(messages, model=DEFAULT_MODEL):
         raise ConnectionError("Ollama is not running. Start it with: ollama serve")
     except requests.Timeout:
         raise TimeoutError("Ollama took too long to respond.")
+
+
+# Embeds a text string using the given model and returns the vector.
+# Uses /api/embed which returns {"embeddings": [[floats]]}.
+def embed(text, model=EMBED_MODEL):
+    payload = {
+        "model": model,
+        "input": text,
+    }
+
+    try:
+        r = requests.post(f"{OLLAMA_BASE}/api/embed", json=payload, timeout=120)
+        r.raise_for_status()
+        return r.json()["embeddings"][0]
+    except requests.ConnectionError:
+        raise ConnectionError("Ollama is not running. Start it with: ollama serve")
+    except requests.Timeout:
+        raise TimeoutError("Ollama took too long to respond.")
+
+
+# Pulls a model from Ollama's registry. Blocks until the download finishes.
+def pull_model(model):
+    try:
+        r = requests.post(
+            f"{OLLAMA_BASE}/api/pull",
+            json={"name": model, "stream": False},
+            timeout=600,
+        )
+        r.raise_for_status()
+    except requests.ConnectionError:
+        raise ConnectionError("Ollama is not running. Start it with: ollama serve")
+    except requests.Timeout:
+        raise TimeoutError("Model pull timed out after 10 minutes.")
+
+
+# Tells Ollama to unload a model from memory immediately.
+# Sends a generate request with keep_alive=0 which triggers unload.
+def unload_model(model):
+    try:
+        requests.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={"model": model, "prompt": "", "keep_alive": 0},
+            timeout=10,
+        )
+    except Exception:
+        pass
