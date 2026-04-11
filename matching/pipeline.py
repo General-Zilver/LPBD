@@ -218,6 +218,11 @@ def compute_cross_references(results):
 
 
 def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=None, delay=5, verbose=False):
+    print("Warming up Ollama model ...")
+    try:
+        ollama_client.generate("Hello", model=model)
+    except Exception:
+        pass
     if model is None:
         model = ollama_client.DEFAULT_MODEL
     now = datetime.now().isoformat()
