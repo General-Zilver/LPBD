@@ -276,7 +276,7 @@ def load_scraped_lookup(scraped_dir):
 # Matches a single page against the user's profile. Chunks the page text
 # if needed and calls phi3 for each chunk. Returns a list of MatchResults.
 def match_page(url, title, page_text, profile_text, hints_text,
-               source_type, pipeline_run_id, model=MATCH_MODEL):
+               source_type, pipeline_run_id, model=MATCH_MODEL, llm_options=None):
     chunks = chunk_text(page_text)
     results = []
 
@@ -285,7 +285,7 @@ def match_page(url, title, page_text, profile_text, hints_text,
 
         try:
             response = ollama_client.generate(
-                prompt, system=SYSTEM_PROMPT, model=model
+                prompt, system=SYSTEM_PROMPT, model=model, options=llm_options
             )
             raw_benefits = parse_response_json(response)
 
@@ -306,7 +306,7 @@ def match_page(url, title, page_text, profile_text, hints_text,
 # Takes keyword-filtered pages (from filter.py) and runs the LLM matcher.
 # scraped_lookup format: {url: (title, text)}.
 def match_pages(answers, filtered_pages, scraped_dir=None, scraped_lookup=None,
-                pipeline_run_id="", model=MATCH_MODEL, delay=5):
+                pipeline_run_id="", model=MATCH_MODEL, delay=5, llm_options=None):
     ok, err = ollama_client.check_ollama(model)
     if not ok:
         raise ConnectionError(err)
@@ -346,14 +346,14 @@ def match_pages(answers, filtered_pages, scraped_dir=None, scraped_lookup=None,
 
         results = match_page(
             url, title, text, profile_text, hints_text,
-            source_type, pipeline_run_id, model
+            source_type, pipeline_run_id, model, llm_options
         )
 
         if results:
             matched_count += len(results)
             all_results.extend(results)
             for r in results:
-                print(f"    → {r.action}: {r.summary[:80]}... "
+                print(f"    -> {r.action}: {r.summary[:80]}... "
                       f"(score: {r.relevance_score})")
         else:
             print(f"    No matches")

@@ -29,7 +29,12 @@ from matching.models import (
 )
 from matching.filter import filter_pages
 from matching.matcher import match_pages, load_scraped_lookup
-from matching.validator import validate_matches, detect_missed_benefits
+from matching.profile_keywords import build_profile_keyword_map
+from matching.validator import (
+    validate_matches,
+    detect_missed_benefits,
+    verify_matches_with_llm,
+)
 
 STAGES = ["filtering", "matching"]
 
@@ -64,6 +69,35 @@ def log_resources(label, verbose=False, expected_model=None):
     except Exception:
         ollama_info = " | ollama: unreachable"
     print(f"  [{label}] RAM: {mem_mb:.0f}MB | CPU: {cpu:.0f}%{ollama_info}")
+
+
+def _build_llm_options(num_threads=None):
+    if isinstance(num_threads, int) and num_threads > 0:
+        return {"num_thread": num_threads}
+    return None
+
+
+def _set_low_priority(verbose=False):
+    if not _HAS_PSUTIL:
+        print("  Low-priority mode requested, but psutil is not installed.")
+        return
+
+    proc = psutil.Process()
+    try:
+        if hasattr(psutil, "IDLE_PRIORITY_CLASS"):
+            proc.nice(psutil.IDLE_PRIORITY_CLASS)
+            if verbose:
+                print("  Process priority set to IDLE.")
+        elif hasattr(psutil, "BELOW_NORMAL_PRIORITY_CLASS"):
+            proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            if verbose:
+                print("  Process priority set to BELOW_NORMAL.")
+        else:
+            proc.nice(19)
+            if verbose:
+                print("  Process niceness set to 19 (best effort).")
+    except Exception as exc:
+        print(f"  Failed to lower process priority: {exc}")
 
 
 # Stable hash of the answers dict so we can detect profile changes between runs.
@@ -217,11 +251,30 @@ def compute_cross_references(results):
 # -- pipeline orchestrator -------------------------------------------------
 
 
-def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=None, delay=5, verbose=False):
+def run_pipeline(
+    user,
+    answers,
+    scraped_dir,
+    results_path,
+    state_path,
+    model=None,
+    delay=5,
+    verbose=False,
+    verify_pass2=False,
+    low_priority=False,
+    num_threads=None,
+    use_profile_keywords=True,
+):
     if model is None:
         model = ollama_client.DEFAULT_MODEL
+    llm_options = _build_llm_options(num_threads)
     now = datetime.now().isoformat()
     current_hash = _hash_answers(answers)
+
+    if low_priority:
+        _set_low_priority(verbose=verbose)
+    if llm_options:
+        print(f"  Ollama thread cap enabled: num_thread={llm_options['num_thread']}")
 
     # Try to resume a previous run
     state = load_state(state_path)
@@ -303,7 +356,9 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
             "llm_proposed": 0,
             "llm_validated": 0,
             "rejected": [],
+            "pass2_rejected": [],
             "keyword_detected": [],
+            "profile_keywords_added": 0,
             "timings": timings,
             "peak_ram_mb": peak_ram_mb,
             "wall_time": time.time() - pipeline_start,
@@ -314,6 +369,24 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
         }
         return envelope, empty_stats
 
+    profile_keywords = {}
+    profile_keyword_count = 0
+    if use_profile_keywords:
+        print("\n--- Profile Keyword Expansion ---")
+        profile_keywords = build_profile_keyword_map(
+            answers,
+            model=model,
+            llm_options=llm_options,
+        )
+        profile_keyword_count = sum(len(v) for v in profile_keywords.values())
+        if profile_keyword_count:
+            print(
+                f"  Generated {profile_keyword_count} profile-derived keyword(s) "
+                f"across {len(profile_keywords)} category(ies)."
+            )
+        else:
+            print("  No profile-derived keywords generated.")
+
     # ---- stage 1: filtering ----
     t0 = time.time()
     if state.current_stage == "filtering" or "filtering" not in state.stages_completed:
@@ -322,14 +395,14 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
         state.current_stage = "filtering"
         save_state(state, state_path)
 
-        relevant, not_relevant = filter_pages(scraped)
+        relevant, not_relevant = filter_pages(scraped, extra_keywords=profile_keywords)
 
         _mark_stage_completed(state, "filtering")
         state.items_processed = len(relevant) + len(not_relevant)
         state.items_total = len(relevant) + len(not_relevant)
         save_state(state, state_path)
     else:
-        relevant, not_relevant = filter_pages(scraped)
+        relevant, not_relevant = filter_pages(scraped, extra_keywords=profile_keywords)
 
     timings["filter"] = time.time() - t0
     _track_ram()
@@ -348,7 +421,9 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
             "llm_proposed": 0,
             "llm_validated": 0,
             "rejected": [],
+            "pass2_rejected": [],
             "keyword_detected": [],
+            "profile_keywords_added": profile_keyword_count,
             "timings": timings,
             "peak_ram_mb": peak_ram_mb,
             "wall_time": time.time() - pipeline_start,
@@ -387,6 +462,7 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
             pipeline_run_id=run_id,
             model=model,
             delay=delay,
+            llm_options=llm_options,
         )
 
         if new_results:
@@ -397,9 +473,6 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
     else:
         new_results = []
 
-    ollama_client.unload_model(model)
-    print(f"  Unloaded {model}")
-
     timings["match"] = time.time() - t0
     _track_ram()
     log_resources("match end", verbose)
@@ -407,7 +480,26 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
     # ---- stage 2.5: validation ----
     t0 = time.time()
     llm_proposed = len(new_results)
+    pass2_rejected = []
     rejected = []
+
+    if verify_pass2 and new_results:
+        print("\n--- Pass 2 Verification (LLM) ---")
+        new_results, pass2_rejected = verify_matches_with_llm(
+            new_results,
+            scraped,
+            model=model,
+            llm_options=llm_options,
+        )
+        print(f"  {len(new_results)} pass-2 valid, {len(pass2_rejected)} pass-2 rejected")
+        if pass2_rejected:
+            reasons = {}
+            for r in pass2_rejected:
+                reason = getattr(r, "rejection_reason", "unknown")
+                reasons[reason] = reasons.get(reason, 0) + 1
+            for reason, count in sorted(reasons.items(), key=lambda x: -x[1]):
+                print(f"    - {reason}: {count}")
+
     if new_results:
         print("\n--- Validating ---")
         new_results, rejected = validate_matches(new_results, scraped)
@@ -419,6 +511,11 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
                 reasons[reason] = reasons.get(reason, 0) + 1
             for reason, count in sorted(reasons.items(), key=lambda x: -x[1]):
                 print(f"    - {reason}: {count}")
+
+    ollama_client.unload_model(model)
+    print(f"  Unloaded {model}")
+
+    all_rejected = pass2_rejected + rejected
     timings["validate"] = time.time() - t0
 
     # ---- stage 2.6: missed benefit detection ----
@@ -445,9 +542,11 @@ def run_pipeline(user, answers, scraped_dir, results_path, state_path, model=Non
     wall_time = time.time() - pipeline_start
     stats = {
         "llm_proposed": llm_proposed,
-        "llm_validated": llm_proposed - len(rejected),
-        "rejected": rejected,
+        "llm_validated": max(0, llm_proposed - len(all_rejected)),
+        "rejected": all_rejected,
+        "pass2_rejected": pass2_rejected,
         "keyword_detected": keyword_matches,
+        "profile_keywords_added": profile_keyword_count,
         "timings": timings,
         "peak_ram_mb": peak_ram_mb,
         "wall_time": wall_time,

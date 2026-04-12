@@ -5,10 +5,13 @@
 # Part 2: detect_missed_benefits — keyword-based safety net for obvious
 # benefits the LLM missed or that were all rejected by validation.
 
+import json
 import re
 import uuid
 from datetime import datetime
 from urllib.parse import urlparse
+
+import ollama_client
 
 from matching.models import MatchResult
 
@@ -74,6 +77,28 @@ FUNDING_EXEMPTIONS = [
     "assistantship", "funding", "tuition", "fee waiver",
 ]
 
+VERIFY_SYSTEM_PROMPT = """
+You are a strict fact verifier.
+
+You will receive:
+1) A candidate benefit item
+2) The source page text
+
+Return only JSON:
+{
+  "valid": true or false,
+  "evidence_quote": "exact quote from the source text if valid, otherwise empty string",
+  "reason": "short reason"
+}
+
+Rules:
+- Mark valid=true only if the page text explicitly supports the candidate.
+- Do not infer from common practices.
+- evidence_quote must be copied from source text.
+- If support is weak or unclear, return valid=false.
+- Output valid JSON only.
+""".strip()
+
 
 # -- action normalization --------------------------------------------------
 
@@ -130,6 +155,113 @@ def _check_evidence(evidence_quote, page_text):
         return True, None
 
     return False, f"evidence not grounded in page text ({ratio:.0%} word overlap)"
+
+
+def _slice_page_text_for_verification(page_text, evidence_quote, max_words=1800):
+    words = page_text.split()
+    if len(words) <= max_words:
+        return page_text
+
+    # Prefer a local window around the claimed evidence when possible.
+    quote = (evidence_quote or "").strip().lower()
+    lower = page_text.lower()
+    if quote:
+        idx = lower.find(quote)
+        if idx != -1:
+            start = max(0, idx - 5000)
+            end = min(len(page_text), idx + len(quote) + 5000)
+            return page_text[start:end]
+
+    return " ".join(words[:max_words])
+
+
+def _parse_verification_json(response_text):
+    start = response_text.find("{")
+    end = response_text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(response_text[start:end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    raw_valid = data.get("valid", False)
+    if isinstance(raw_valid, bool):
+        valid = raw_valid
+    elif isinstance(raw_valid, str):
+        valid = raw_valid.strip().lower() in ("true", "1", "yes")
+    else:
+        valid = bool(raw_valid)
+
+    evidence_quote = str(data.get("evidence_quote") or "").strip()
+    reason = str(data.get("reason") or "").strip()
+    return valid, evidence_quote, reason
+
+
+def verify_matches_with_llm(matches, scraped_lookup, model, llm_options=None):
+    verified = []
+    rejected = []
+
+    for match in matches:
+        page_entry = scraped_lookup.get(match.page_url)
+        if not page_entry:
+            match.rejection_reason = f"pass2 page missing: {match.page_url}"
+            rejected.append(match)
+            continue
+
+        page_title, page_text = page_entry
+        page_slice = _slice_page_text_for_verification(page_text, match.evidence_quote)
+
+        prompt = f"""
+CANDIDATE
+benefit_name: {match.benefit_name}
+action: {match.action}
+summary: {match.summary}
+reasoning: {match.reasoning}
+claimed_evidence_quote: {match.evidence_quote}
+source_url: {match.page_url}
+source_title: {page_title}
+
+SOURCE TEXT
+{page_slice}
+
+TASK
+Verify whether the candidate is explicitly supported by SOURCE TEXT.
+Return JSON only.
+""".strip()
+
+        try:
+            response = ollama_client.generate(
+                prompt,
+                system=VERIFY_SYSTEM_PROMPT,
+                model=model,
+                options=llm_options,
+            )
+        except Exception as exc:
+            match.rejection_reason = f"pass2 verification error: {exc}"
+            rejected.append(match)
+            continue
+
+        parsed = _parse_verification_json(response)
+        if not parsed:
+            match.rejection_reason = "pass2 invalid JSON response"
+            rejected.append(match)
+            continue
+
+        is_valid, evidence_quote, reason = parsed
+        if not is_valid:
+            detail = reason or "not explicitly supported in source text"
+            match.rejection_reason = f"pass2 rejected: {detail}"
+            rejected.append(match)
+            continue
+
+        if evidence_quote:
+            match.evidence_quote = evidence_quote
+        verified.append(match)
+
+    return verified, rejected
 
 
 # -- opt-out validation ----------------------------------------------------
