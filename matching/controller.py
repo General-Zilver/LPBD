@@ -42,7 +42,17 @@ def load_user_answers(username):
 
 # Runs the full matching pipeline: keyword filter -> match.
 # This is what match.py calls. Returns the results envelope.
-def run_matching_pipeline(user, model=None, delay=5, scraped_dir=None, output=None):
+def run_matching_pipeline(
+    user,
+    model=None,
+    delay=5,
+    scraped_dir=None,
+    output=None,
+    verify_pass2=False,
+    low_priority=False,
+    num_threads=None,
+    profile_keywords=True,
+):
     answers = load_user_answers(user)
     if not answers:
         raise ValueError(
@@ -64,6 +74,10 @@ def run_matching_pipeline(user, model=None, delay=5, scraped_dir=None, output=No
         state_path=DEFAULT_STATE,
         model=model,
         delay=delay,
+        verify_pass2=verify_pass2,
+        low_priority=low_priority,
+        num_threads=num_threads,
+        use_profile_keywords=profile_keywords,
     )
     return envelope
 

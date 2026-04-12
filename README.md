@@ -123,6 +123,9 @@ python scrape_all.py
 python match_it.py --user default_user
 ```
 
+`match_it.py` now uses both base keywords and profile-derived keywords by default.
+Use `--no-profile-keywords` if you want base keywords only.
+
 ### 9. Open GUI chat/results view
 
 ```bash
@@ -165,12 +168,29 @@ python map.py --max-pages 50 --delay 0.1
 # Scrape only first N pages per mapped domain
 python scrape_all.py --max-pages 5
 
+# Default matching run (base keywords + profile-derived keywords)
+python match_it.py --user default_user
+
 # Verbose matching output
 python match_it.py --user default_user --verbose
 
 # Use a different model
 python match_it.py --user default_user --model phi3:mini
+
+# Enable pass-2 LLM verification + low-priority background mode
+python match_it.py --user default_user --verify-pass2 --low-priority --num-threads 4
+
+# Explicitly force profile keyword expansion on
+python match_it.py --user default_user --profile-keywords
+
+# Disable profile-derived additions and use only base keywords
+python match_it.py --user default_user --no-profile-keywords
 ```
+
+Keyword mode quick reference:
+- `default`: base keyword list + profile-derived keyword additions.
+- `--profile-keywords`: explicitly turns profile-derived additions on.
+- `--no-profile-keywords`: turns profile-derived additions off (base list only).
 
 ## Quick Test Without Chrome Extension
 

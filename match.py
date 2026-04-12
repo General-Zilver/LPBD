@@ -22,6 +22,35 @@ def main():
     parser.add_argument("--model", default="phi3:mini", help="Ollama model name")
     parser.add_argument("--delay", type=int, default=5,
                         help="Seconds between Ollama calls (default: 5)")
+    parser.add_argument(
+        "--verify-pass2",
+        action="store_true",
+        help="Enable a second strict LLM verification pass before deterministic validation",
+    )
+    parser.add_argument(
+        "--low-priority",
+        action="store_true",
+        help="Run matcher process at lower OS priority (best effort)",
+    )
+    parser.add_argument(
+        "--num-threads",
+        type=int,
+        default=None,
+        help="Cap Ollama generation threads (maps to options.num_thread)",
+    )
+    parser.add_argument(
+        "--profile-keywords",
+        dest="profile_keywords",
+        action="store_true",
+        help="Use profile-derived LLM keyword suggestions in addition to base keywords (default: on)",
+    )
+    parser.add_argument(
+        "--no-profile-keywords",
+        dest="profile_keywords",
+        action="store_false",
+        help="Disable profile-derived keyword suggestions and use only base keywords",
+    )
+    parser.set_defaults(profile_keywords=True)
     parser.add_argument("--scraped-dir", type=Path, default=PROJECT_ROOT / "scraped_output",
                         help="Directory with scraped output files")
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "matched_benefits.json",
@@ -52,6 +81,13 @@ def main():
     else:
         print(f"Model: {resolved_model} (default)")
     print(f"Delay: {args.delay}s")
+    print(f"Pass2 verify: {'on' if args.verify_pass2 else 'off'}")
+    print(f"Low priority: {'on' if args.low_priority else 'off'}")
+    if args.num_threads:
+        print(f"Ollama threads: {args.num_threads}")
+    else:
+        print("Ollama threads: default")
+    print(f"Profile keywords: {'on' if args.profile_keywords else 'off'}")
     print(f"Scraped dir: {args.scraped_dir}")
     print(f"Output: {args.output}\n")
 
@@ -61,6 +97,10 @@ def main():
         delay=args.delay,
         scraped_dir=args.scraped_dir,
         output=args.output,
+        verify_pass2=args.verify_pass2,
+        low_priority=args.low_priority,
+        num_threads=args.num_threads,
+        profile_keywords=args.profile_keywords,
     )
 
     if envelope.results:
