@@ -85,7 +85,7 @@ def run_matching_pipeline(
 # Matches a single URL immediately without the full pipeline.
 # Fetches -> embeds (nomic) -> matches (phi3) -> saves results.
 # Returns a list of MatchResult objects.
-def run_single_page(user, url, model="phi3:mini"):
+def run_single_page(user, url, model=None):
     answers = load_user_answers(user)
     if not answers:
         raise ValueError(
@@ -93,12 +93,14 @@ def run_single_page(user, url, model="phi3:mini"):
             "Complete the questionnaire in the GUI first."
         )
 
+    import ollama_client as _oc
+
     return match_and_save(
         url=url,
         answers=answers,
         results_path=DEFAULT_RESULTS,
         embeddings_path=DEFAULT_EMBEDDINGS,
-        model=model,
+        model=model or _oc.DEFAULT_MODEL,
     )
 
 

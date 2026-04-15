@@ -167,7 +167,7 @@ def print_performance(stats):
 
     if timings:
         print("\n  Time per stage:")
-        for stage in ["filter", "match", "validate", "detect"]:
+        for stage in ["profile_keywords", "filter", "match", "validate", "detect"]:
             t = timings.get(stage)
             if t is not None:
                 print(f"    {stage:<12} {_fmt_time(t)}")

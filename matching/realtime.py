@@ -69,7 +69,7 @@ def embed_single_page(url, title, text, embeddings_path):
 
 
 # Matches a single URL immediately against the user's profile.
-# Flow: fetch → embed (nomic) → unload nomic → match (phi3) → unload phi3.
+# Flow: fetch → embed (nomic) → unload nomic → match (LLM) → unload LLM.
 # Returns a list of MatchResult objects.
 def match_single_page(url, answers, embeddings_path, model=MATCH_MODEL):
     print(f"  Fetching {url}...")
@@ -83,7 +83,7 @@ def match_single_page(url, answers, embeddings_path, model=MATCH_MODEL):
     embed_single_page(url, title, text, embeddings_path)
     ollama_client.unload_model(ollama_client.EMBED_MODEL)
 
-    # Step 2: match with phi3
+    # Step 2: match with LLM
     ok, err = ollama_client.check_ollama(model)
     if not ok:
         raise ConnectionError(err)
