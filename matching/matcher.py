@@ -1,8 +1,7 @@
-# matcher.py -- Sends filtered pages + user profile to phi3 for detailed
-# benefit analysis. Only phi3 is loaded during this stage. Each page that
-# passed the filter gets a structured prompt with the user's profile,
-# applicable heuristic rules, and the page content. phi3 returns JSON
-# matching the MatchResult schema.
+# matcher.py -- Sends filtered pages + user profile to the LLM for detailed
+# benefit analysis. Each page that passed the keyword filter gets a structured
+# prompt with the user's profile, applicable heuristic rules, and the page
+# content. The LLM returns JSON matching the MatchResult schema.
 
 import json
 import re
@@ -214,8 +213,8 @@ def parse_response_json(response_text):
         return []
 
 
-# Converts a raw benefit dict from phi3 into a MatchResult dataclass.
-# phi3 sometimes returns null for fields, so we coalesce None to safe defaults.
+# Converts a raw benefit dict from the LLM into a MatchResult dataclass.
+# LLMs sometimes return null for fields, so we coalesce None to safe defaults.
 def to_match_result(raw, url, title, source_type, pipeline_run_id):
     score = raw.get("relevance_score")
     try:

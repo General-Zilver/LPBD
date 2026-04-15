@@ -373,11 +373,13 @@ def run_pipeline(
     profile_keyword_count = 0
     if use_profile_keywords:
         print("\n--- Profile Keyword Expansion ---")
+        t_pk = time.time()
         profile_keywords = build_profile_keyword_map(
             answers,
             model=model,
             llm_options=llm_options,
         )
+        timings["profile_keywords"] = time.time() - t_pk
         profile_keyword_count = sum(len(v) for v in profile_keywords.values())
         if profile_keyword_count:
             print(
