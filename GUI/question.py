@@ -238,7 +238,7 @@ class QuestionPage(ctk.CTkFrame):
         question = self.get_current_question()
         current_section = self.selected_options[self.current_step - 1]
 
-        username = "default_user"
+        username = self.controller.session["username"]
 
         # Save to JSON
         save_answers(username, question, current_section, answer)
@@ -340,6 +340,11 @@ class QuestionPage(ctk.CTkFrame):
             self.next_button.configure(text="Finish")
     # Inside QuestionPage class
     def refresh_current_question(self):
+        if not self.winfo_exists():
+            return
+        if not hasattr(self, "question_label") or not self.question_label.winfo_exists():
+            return
+
         if not self.selected_options:
             self.question_label.configure(text="No section selected")
             return

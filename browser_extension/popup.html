@@ -1,50 +1,222 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="utf-8" />
+<head>
+    <meta charset="utf-8" />
+    <style>
+        :root {
+            --fg:        #1f2328;
+            --muted:     #6b7280;
+            --bg:        #ffffff;
+            --surface:   #f6f7f9;
+            --border:    #e3e5e8;
+            --accent:    #3b6fe0;
+            --accent-fg: #ffffff;
+            --danger:    #c4343b;
+        }
 
-        <!-- Basic styling for the popup window. -->
-        <style>
-            body { font-family: Arial, sans-serif; width: 360px; padding: 10px; }
-            .row { margin-top: 10px; }
-            input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
-            button { width: 100%; padding: 10px; margin-top: 8px; }
-            small { color: #444; }
-            .status { margin-top: 8px; font-size: 12px; }
-            code { font-size: 12px; }
-        </style>
-    </head>
-    <body>
-        <!-- Auto-collect toggle for .edu and .gov pages. -->
-        <div class="row">
-            <label>
-                <input type="checkbox" id="autoCollect" />
-                Auto collect visits for .edu and .gov domains.
-            </label>
-            <!-- Helper text for the user. -->
-            <div><small> When on, the extension watches only .edu and .gov domains.</small></div>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            font-size: 13px;
+            color: var(--fg);
+            background: var(--bg);
+            width: 320px;
+            margin: 0;
+            padding: 14px 14px 12px;
+        }
+
+        h1 {
+            font-size: 13px;
+            font-weight: 600;
+            margin: 0 0 6px;
+            color: var(--fg);
+        }
+
+        .section {
+            margin-bottom: 14px;
+        }
+
+        .helper {
+            font-size: 11px;
+            color: var(--muted);
+            line-height: 1.35;
+            margin-top: 4px;
+        }
+
+        /* Toggle row */
+        .toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle input[type="checkbox"] {
+            margin: 0;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+
+        .toggle label {
+            cursor: pointer;
+        }
+
+        /* Inputs and buttons */
+        input[type="text"] {
+            width: 100%;
+            padding: 7px 9px;
+            font-size: 12px;
+            color: var(--fg);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        button {
+            font-family: inherit;
+            font-size: 12px;
+            padding: 7px 10px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--fg);
+            cursor: pointer;
+            transition: background 0.12s ease, border-color 0.12s ease;
+        }
+
+        button:hover {
+            background: #eceef2;
+        }
+
+        button.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--accent-fg);
+        }
+
+        button.primary:hover {
+            background: #2f5fc8;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        .button-row button { flex: 1; }
+
+        /* Custom pages list */
+        .page-list {
+            margin-top: 6px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: var(--surface);
+            max-height: 140px;
+            overflow-y: auto;
+        }
+
+        .page-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+        }
+
+        .page-item:last-child { border-bottom: none; }
+
+        .page-url {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--fg);
+        }
+
+        .remove-btn {
+            padding: 2px 6px;
+            font-size: 14px;
+            line-height: 1;
+            color: var(--muted);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .remove-btn:hover {
+            color: var(--danger);
+            background: #fbe5e7;
+        }
+
+        .empty-state {
+            padding: 10px 8px;
+            font-size: 11px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* Status line */
+        .status-bar {
+            min-height: 16px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .status-bar.active { color: var(--fg); }
+    </style>
+</head>
+<body>
+    <!-- Auto-collect toggle -->
+    <div class="section">
+        <div class="toggle">
+            <input type="checkbox" id="autoCollect" />
+            <label for="autoCollect">Auto collect .edu and .gov sites</label>
         </div>
+        <div class="helper">Watches sites you visit and collects .edu and .gov domains automatically</div>
+    </div>
 
-        <!-- Custom webpage input and controls. -->
-        <div class="row">
-            <label for="customUrl"><strong>Custom webpage</strong></label>
-            <button id="useCurrent" style="margin-bottom: 5px; background-color: #f0f0f0;">
-                Use Current Page
-            </button>
-            <input id="customUrl" type="text" placeholder="https://example.edu/some/page" />
-            <button id="setCustom">Set custom page (ask permission)</button>
-            <button id="clearCustom">Remove custom page</button>
-            <div><small>We match exactly this page path. Query and hash are ignored.</small></div>
+    <!-- Add custom page -->
+    <div class="section">
+        <h1>Add a custom page</h1>
+        <div class="button-row">
+            <button id="useCurrent">Use Current Page</button>
         </div>
-
-        <!-- Manual actions and status display. -->
-        <div class="row">
-            <button id="sendNow">Send queued items now</button>
-            <button id="clearLocal">Clear local extension data</button>
-            <div class="status" id="status"></div>
-            <div class="status"><small>Queued count: <span id="queueCount">0</span></small></div>
+        <div class="button-row">
+            <input id="customUrl" type="text" placeholder="https://example.edu/benefits" />
         </div>
+        <div class="button-row">
+            <button id="addPage" class="primary">Add Page</button>
+        </div>
+        <div class="helper">Add any page you want monitored for benefits</div>
+    </div>
 
-        <script src="popup.js"></script>
-    </body>
+    <!-- Current custom pages -->
+    <div class="section">
+        <h1>Custom pages</h1>
+        <div id="pageList" class="page-list">
+            <div class="empty-state">No custom pages added</div>
+        </div>
+    </div>
+
+    <!-- Status line -->
+    <div id="status" class="status-bar"></div>
+
+    <script src="popup.js"></script>
+</body>
 </html>

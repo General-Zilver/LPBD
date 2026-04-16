@@ -1,179 +1,182 @@
-// Default values for settings and local queue.
-const DEFAULTS = 
-    {
-        autoCollect:        true,
-        customPage:         null,
-        customPermission:   null,
-        queue:              []   
-    };
+// Default state shape. customPages is an array of { url, permission, added_at }.
+const DEFAULTS = {
+    autoCollect:  true,
+    customPages:  [],
+    queue:        [],
+};
 
-// Write a short message into the popup status area.
-function setStatus(msg)
-    {
-        document.getElementById("status").textContent = msg;
+const STATUS_CLEAR_MS = 3500;
+let statusTimer = null;
+
+
+// Shows a short message at the bottom of the popup. Clears after a few seconds.
+function setStatus(msg) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.classList.toggle("active", !!msg);
+
+    if (statusTimer) clearTimeout(statusTimer);
+    if (msg) {
+        statusTimer = setTimeout(() => {
+            el.textContent = "";
+            el.classList.remove("active");
+        }, STATUS_CLEAR_MS);
+    }
+}
+
+
+// Normalize a user-provided URL to "origin + pathname" lowercase.
+function normalizePageUrl(urlString) {
+    const url = new URL(urlString);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return (url.origin + url.pathname).toLowerCase();
+}
+
+
+// Chrome permission pattern for a given normalized page.
+function toMatchPattern(normalizedPage) {
+    return normalizedPage + "*";
+}
+
+
+// Render the list of saved custom pages with remove buttons.
+function renderPageList(customPages) {
+    const list = document.getElementById("pageList");
+    list.innerHTML = "";
+
+    if (!customPages || customPages.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No custom pages added";
+        list.appendChild(empty);
+        return;
     }
 
-// Update the number shown in the "Queued count" display.
-function updateQueueContent(queue)
-    {
-        document.getElementById("queueCount").textContent = String(queue.length);
+    for (const entry of customPages) {
+        const row = document.createElement("div");
+        row.className = "page-item";
+
+        const urlEl = document.createElement("div");
+        urlEl.className = "page-url";
+        urlEl.textContent = entry.url;
+        urlEl.title = entry.url;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "remove-btn";
+        removeBtn.textContent = "\u00d7";
+        removeBtn.title = "Remove";
+        removeBtn.addEventListener("click", () => removePage(entry.url));
+
+        row.appendChild(urlEl);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+    }
+}
+
+
+// Load state from chrome.storage and refresh the UI.
+async function loadUI() {
+    const data = await chrome.storage.local.get(DEFAULTS);
+    document.getElementById("autoCollect").checked = !!data.autoCollect;
+    renderPageList(data.customPages || []);
+}
+
+
+// Save a new custom page (after requesting host permission).
+async function addPage() {
+    const raw = document.getElementById("customUrl").value.trim();
+    if (!raw) {
+        setStatus("Enter a URL first");
+        return;
     }
 
-// Normalize a user-provided URL into an "exact page".
-function normalizePageUrl(urlString) 
-    {
-        const url = new URL(urlString);
-        // Only allow normal website URLs.
-        if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-        return (url.origin + url.pathname).toLowerCase();
+    let normalized;
+    try {
+        normalized = normalizePageUrl(raw);
+    } catch {
+        setStatus("Invalid URL");
+        return;
+    }
+    if (!normalized) {
+        setStatus("URL must be http or https");
+        return;
     }
 
-// Convert our normalized page string into a Chrome permission match pattern.
-// The "*" allows any query string or hash.
-function toMatchPatternFromNormalizedPage(normalizedPage) 
-    {
-        return normalizedPage + "*";
+    const data = await chrome.storage.local.get(DEFAULTS);
+    const customPages = data.customPages || [];
+
+    if (customPages.some(p => p.url === normalized)) {
+        setStatus("Already added");
+        return;
     }
 
-// Load settings from chrome.storage, and reflect them into the popup UI.
-async function loadUI()
-    {
-        const data = await chrome.storage.local.get(DEFAULTS);
-
-        document.getElementById("autoCollect").checked = !!data.autoCollect;
-
-        if (data.customPage)
-            {
-                document.getElementById("customUrl").value = data.customPage;
-            }
-
-        updateQueueContent(data.queue || []);
+    const pattern = toMatchPattern(normalized);
+    const granted = await chrome.permissions.request({ origins: [pattern] });
+    if (!granted) {
+        setStatus("Permission denied");
+        return;
     }
 
-// Handle changes to the auto-collect checkbox.
-// This updates chrome.storage so the service worker can use it later.
-document.getElementById("autoCollect").addEventListener("change", async (e) => 
-    {
-        await chrome.storage.local.set({ autoCollect: e.target.checked });
-        setStatus(e.target.checked ? "Auto collect enabled." : "Auto collect disabled.");
+    customPages.push({
+        url: normalized,
+        permission: pattern,
+        added_at: new Date().toISOString(),
     });
 
-// Handle "Set custom page" button clicks.
-// This asks Chrome for permission to observe the custom page URL.
-document.getElementById("setCustom").addEventListener("click", async () =>
-    {
-        const raw = document.getElementById("customUrl").value.trim();
-        if (!raw)
-            {
-                setStatus("Enter a custom webpage URL first");
-                return;   
-            }
+    await chrome.storage.local.set({ customPages });
+    document.getElementById("customUrl").value = "";
+    setStatus("Page added");
+    await loadUI();
+}
 
-        let normalized;
-            try
-                {
-                    normalized = normalizePageUrl(raw);
-                } 
-            catch
-                {
-                    setStatus("Invalid URL.");
-                    return;
-                }
-            if (!normalized)
-                {
-                    setStatus("URL must be http or https.");
-                    return;   
-                }
-        const pattern = toMatchPatternFromNormalizedPage(normalized);
 
-        const granted = await chrome.permissions.request({origins: [pattern] });
-        if (!granted)
-            {
-                setStatus("Permission denied for that page.");
-                return;   
-            }
+// Remove a custom page by URL and revoke its permission.
+async function removePage(url) {
+    const data = await chrome.storage.local.get(DEFAULTS);
+    const customPages = data.customPages || [];
+    const entry = customPages.find(p => p.url === url);
 
-        await chrome.storage.local.set 
-            ({
-                customPage: normalized,
-                customPermission: pattern
-            });
+    if (entry?.permission) {
+        try {
+            await chrome.permissions.remove({ origins: [entry.permission] });
+        } catch {}
+    }
 
-        setStatus ("Custom page set and permission granted.");
-        await loadUI();
+    const updated = customPages.filter(p => p.url !== url);
+    await chrome.storage.local.set({ customPages: updated });
+    setStatus("Page removed");
+    await loadUI();
+}
 
-    });
 
-// Handle "Remove custom page" button clicks.
-// This removes the custom page setting and revokes permission if possible.
-document.getElementById("clearCustom").addEventListener("click", async () => 
-    {
-        const data = await chrome.storage.local.get(DEFAULTS);
-        const pattern = data.customPermission;
+// Wire up the auto-collect toggle.
+document.getElementById("autoCollect").addEventListener("change", async (e) => {
+    await chrome.storage.local.set({ autoCollect: e.target.checked });
+    setStatus(e.target.checked ? "Auto collect on" : "Auto collect off");
+});
 
-        if (pattern)
-            {
-                await chrome.permissions.remove({ origins: [pattern] });
-            }
-        
-        await chrome.storage.local.set({ customPage: null, customPermission: null});
-        setStatus("Custom page removed.");
-        await loadUI();
-    });
 
-// Handle "Send queued items now" button clicks.
-// This tells the service worker to attempt sending the queue.
-document.getElementById("sendNow").addEventListener("click", async () => 
-    {
-        chrome.runtime.sendMessage({ type: "queue.flush" }, async (resp) => 
-            {
-                const err = chrome.runtime.lastError?.message;
-                if (err)
-                    {
-                        setStatus(`Could not message service worker: ${err}`);
-                        return;
-                    }    
-                setStatus(resp?.ok ? "Flush requested." : "Flush request failed.");
-                await loadUI();
-            });
-    });
-
-// Handle "Clear local extension data" button clicks.
-// This wipes queued items and key settings.
-document.getElementById("clearLocal").addEventListener("click", async () => 
-    {
-        await chrome.storage.local.set(
-            {
-                queue: [],
-                lastSent: {},
-                autoCollect: true,
-                customPage: null,
-                customPermission: null
-            });
-        setStatus("Cleared extension data.");
-        await loadUI();
-    });
-// Handle "Use Current Page" button
+// Fill the input with the current tab URL.
 document.getElementById("useCurrent").addEventListener("click", async () => {
-    try 
-        {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            const url = tab?.url;
-            const normalized = normalizePageUrl(url || "");
-
-            if (!normalized) 
-                {
-                    setStatus("Current tab is not an http/https page.");
-                    return;
-                }
-
-            document.getElementById("customUrl").value = normalized;
-            setStatus("Loaded current page. Click 'Set custom page' to save.");
-        } 
-    catch (e) 
-        {
-            setStatus(`Could not read current tab URL: ${e?.message || e}`);
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const normalized = normalizePageUrl(tab?.url || "");
+        if (!normalized) {
+            setStatus("Current tab is not a web page");
+            return;
         }
+        document.getElementById("customUrl").value = normalized;
+    } catch (e) {
+        setStatus("Could not read current tab");
+    }
+});
+
+
+document.getElementById("addPage").addEventListener("click", addPage);
+
+// Allow Enter in the URL input to trigger Add Page.
+document.getElementById("customUrl").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addPage();
 });
 
 

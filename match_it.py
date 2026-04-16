@@ -240,6 +240,11 @@ def main():
         action="store_false",
         help="Disable profile-derived keyword suggestions and use only base keywords",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-scrape all pages (bypass change detection) before matching",
+    )
     parser.set_defaults(profile_keywords=True)
     args = parser.parse_args()
 
@@ -264,6 +269,17 @@ def main():
             print("No users found. Complete the questionnaire in the GUI first.")
         sys.exit(1)
 
+    # Re-scrape everything fresh when --force is passed
+    if args.force:
+        print("Force mode: re-scraping all pages before matching...\n")
+        import subprocess as _sp
+        scrape_cmd = [sys.executable, str(PROJECT_ROOT / "scrape_all.py"), "--force"]
+        scrape_result = _sp.run(scrape_cmd, cwd=str(PROJECT_ROOT))
+        if scrape_result.returncode != 0:
+            print("Warning: scrape_all.py exited with errors, continuing anyway.\n")
+        else:
+            print()
+
     if not scraped_dir.exists() or not list(scraped_dir.glob("scraped_*.txt")):
         print(f"Error: No scraped data found in {scraped_dir}")
         print("Run `python scrape_all.py` first.")
@@ -282,6 +298,7 @@ def main():
     print(f"Priority:   {'low' if args.low_priority else 'normal'}")
     print(f"Threads:    {args.num_threads if args.num_threads else 'default'}")
     print(f"Profile KW: {'on' if args.profile_keywords else 'off'}")
+    print(f"Force:      {'on' if args.force else 'off'}")
     print(f"Pages:      {scraped_count} scraped")
     print()
 

@@ -73,19 +73,20 @@ class SettingsOverlay(ctk.CTkFrame):
 
     def open_update_form(self):
         from question import QuestionPage
-        # create QuestionPage if it doesn't exist yet
-        if self.question_page is None:
-            selected_options = list(self.user_answers.keys())
 
-            # fallback if answers.json is empty
-            if not selected_options:
-                selected_options = []
+        # Always create a fresh QuestionPage to avoid stale widget references
+        if self.question_page is not None:
+            try:
+                self.question_page.destroy()
+            except Exception:
+                pass
 
-            self.question_page = QuestionPage(
-                self.parent,
-                self.controller,
-                selected_options
-            )
+        selected_options = list(self.user_answers.keys()) or []
+        self.question_page = QuestionPage(
+            self.parent,
+            self.controller,
+            selected_options
+        )
         self.destroy_overlay()
 
         if self.controller.current_page:
