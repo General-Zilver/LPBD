@@ -254,7 +254,8 @@ class ChatPage(ctk.CTkFrame):
 
             reply = ollama_client.chat(messages)
             self.conversation.append({"role": "assistant", "content": reply})
-            self.after(0, lambda: self._show_reply(reply))
+            if self.winfo_exists():
+                self.after(0, lambda: self._show_reply(reply))
         except ConnectionError:
             self.after(0, lambda: self._show_reply(
                 "Ollama is not running. Please start it and make sure phi3:mini is pulled:\n"
@@ -265,13 +266,17 @@ class ChatPage(ctk.CTkFrame):
 
     # Updates the UI with the LLM response (replaces the "Thinking..." bubble)
     def _show_reply(self, text):
-        self.sending = False
-        # Remove the "Thinking..." bubble (last widget in chat_frame)
-        children = self.chat_frame.winfo_children()
-        if children:
-            children[-1].destroy()
-        self.add_message(text, sender="system")
-
+        if not self.winfo_exists():
+            return
+        try:
+            self.sending = False
+            # Remove the "Thinking..." bubble (last widget in chat_frame)
+            children = self.chat_frame.winfo_children()
+            if children:
+                children[-1].destroy()
+            self.add_message(text, sender="system")
+        except:
+            pass
     # -----------------------
     # File Upload
     # -----------------------

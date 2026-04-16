@@ -35,7 +35,7 @@ def check_ollama(model=DEFAULT_MODEL):
 
     return True, None
 
-
+import time 
 # Sends a one-shot prompt to Ollama and returns the full response text.
 # Good for matching where there's no conversation history.
 # options is passed through to Ollama's generation options (for example num_thread).
