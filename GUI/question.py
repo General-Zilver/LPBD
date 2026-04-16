@@ -208,7 +208,10 @@ class QuestionPage(ctk.CTkFrame):
             command=self.next_action
         )
         self.next_button.grid(row=0, column=1, padx=10)
+        self.bind("<Return>", lambda event: self.next_action())
+        self.focus_set()
 
+        self.answer_entry.bind("<Return>", lambda event: self.next_action())
         self.update_next_button_text()
 
     # Question Logic
