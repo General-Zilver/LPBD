@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 from typing import Any, Dict, List, Tuple
 
@@ -36,6 +37,48 @@ def _page_title(html_text: str) -> str:
 # Shared SHA-256 helper used for page-level and pack-level fingerprints.
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+
+MIN_CONTENT_LENGTH = 50
+
+# Phrases that indicate login, auth, or utility pages. Case-insensitive.
+# Easy to extend — just add a string.
+AUTH_UTILITY_SIGNALS = [
+    "sign in",
+    "log in",
+    "login",
+    "forgot your password",
+    "forgot password",
+    "authentication failed",
+    "account password warning",
+    "system check",
+    "shibboleth",
+    "wp-admin",
+    "wp-login",
+    "access denied",
+    "session expired",
+    "session timed out",
+    "unauthorized",
+    "permission denied",
+    "please authenticate",
+]
+
+_AUTH_PATTERN = re.compile(
+    "|".join(re.escape(s) for s in AUTH_UTILITY_SIGNALS),
+    re.IGNORECASE,
+)
+
+
+# Returns a rejection reason if the page is empty or login/auth junk, else None.
+def _content_quality_check(url, title, normalized_text):
+    if len(normalized_text.strip()) < MIN_CONTENT_LENGTH:
+        return "empty normalized text"
+
+    combined = f"{url} {title} {normalized_text[:500]}"
+    if _AUTH_PATTERN.search(combined):
+        return "auth or utility page"
+
+    return None
 
 
 # Build conditional request headers from merged metadata/client validators.
@@ -145,6 +188,12 @@ def get_or_build_pack(
 
             title = _page_title(response.text)
             normalized_text = _normalize_text(response.text)
+
+            reject_reason = _content_quality_check(url, title, normalized_text)
+            if reject_reason:
+                errors.append({"url": url, "error": reject_reason})
+                continue
+
             text_hash = _sha256(normalized_text)
             fetched_at = time.time()
 

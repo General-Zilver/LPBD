@@ -56,7 +56,8 @@ def main():
     parser.add_argument("--db", type=Path, default=None, help="Path to local_benefits.db")
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "mapped_pages.json",
                         help="Output path for mapped_pages.json")
-    parser.add_argument("--max-pages", type=int, default=500, help="Max pages to crawl per domain")
+    parser.add_argument("--max-pages", type=int, default=None,
+                        help="Max pages to crawl per domain (default: unlimited)")
     parser.add_argument("--delay", type=float, default=0.3, help="Delay between requests in seconds")
     args = parser.parse_args()
 
@@ -89,7 +90,8 @@ def main():
         args.output.unlink()
         print(f"Cleared old {args.output.name}\n")
 
-    print(f"Mapping with max_pages={args.max_pages}, delay={args.delay}s ...\n")
+    limit_display = args.max_pages if args.max_pages is not None else "unlimited"
+    print(f"Mapping with max_pages={limit_display}, delay={args.delay}s ...\n")
     map_domains_batch(
         domains=urls,
         include_subdomains=True,

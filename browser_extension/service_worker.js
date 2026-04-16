@@ -1,16 +1,16 @@
 // Background service worker (Manifest V3).
 // Responsibilities:
-// 1) Watch .edu/.gov navigations (and an optional custom page).
+// 1) Watch .edu/.gov navigations (and any custom pages the user adds).
 // 2) Throttle sends so we do not spam duplicates.
 // 3) Send items to the native host when possible.
 // 4) Queue items locally when native host is unavailable, then retry.
 
 const DEFAULTS = {
   autoCollect: true,
-  customPage: null,        // normalized "https://example.com/path"
+  customPages: [],         // [{ url, permission, added_at }]
   queue: [],               // unsent items [{ kind, value, seen_at }]
   lastSent: {},            // throttling map: key -> timestamp
-  hostName: "com.lpbd.native.host" // replace with partner-provided host name
+  hostName: "com.lpbd.native.host"
 };
 
 const SEND_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // once per week per key
@@ -43,6 +43,23 @@ async function getState() {
 
 async function setState(patch) {
   await chrome.storage.local.set(patch);
+}
+
+// Migrate the legacy single customPage/customPermission into the customPages array.
+async function migrateLegacyCustomPage() {
+  const raw = await chrome.storage.local.get(["customPage", "customPermission", "customPages"]);
+  if (raw.customPage && (!raw.customPages || raw.customPages.length === 0)) {
+    await chrome.storage.local.set({
+      customPages: [{
+        url: raw.customPage,
+        permission: raw.customPermission || (raw.customPage + "*"),
+        added_at: new Date().toISOString(),
+      }],
+    });
+  }
+  if (raw.customPage || raw.customPermission) {
+    await chrome.storage.local.remove(["customPage", "customPermission"]);
+  }
 }
 
 // Throttle: decide whether to send a key again.
@@ -117,13 +134,13 @@ async function flushQueue() {
     await setState({ queue: [] });
     return true;
   } catch {
-    // Keep queue. We'll retry via alarm or manual flush.
     return false;
   }
 }
 
-// Event: on install/update, set defaults and start periodic retry.
+// Event: on install/update, migrate, set defaults and start periodic retry.
 chrome.runtime.onInstalled.addListener(async () => {
+  await migrateLegacyCustomPage();
   const state = await getState();
   await setState(state);
   chrome.alarms.create("retryFlush", { periodInMinutes: 30 });
@@ -134,15 +151,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "retryFlush") await flushQueue();
 });
 
-// Event: popup asked us to flush right now.
+// Event: popup may still ask us to flush (kept for internal messaging support).
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === "queue.flush") 
-    {
-      flushQueue()
-         .then((ok) => sendResponse({ ok }))
-        .catch(() => sendResponse({ ok: false }));
-      return true;
-    }
+  if (msg?.type === "queue.flush") {
+    flushQueue()
+      .then((ok) => sendResponse({ ok }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
 });
 
 // Event: navigation committed (top frame). Collect allowed items and send or queue.
@@ -150,8 +166,6 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
   if (details.frameId !== 0) return;
 
   const state = await getState();
-  if (!state.autoCollect) return;
-
   const normalizedPage = normalizePage(details.url);
   if (!normalizedPage) return;
 
@@ -162,8 +176,8 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
   const lastSent = state.lastSent || {};
   const itemsToSend = [];
 
-  // Rule: .edu/.gov domain collection (throttled).
-  if (isEduOrGov(domain)) {
+  // Rule: .edu/.gov domain collection (throttled), only when auto-collect is on.
+  if (state.autoCollect && isEduOrGov(domain)) {
     const key = `domain:${domain}`;
     if (shouldSend(lastSent, key, now)) {
       itemsToSend.push({ kind: "domain", value: domain, seen_at: new Date().toISOString() });
@@ -171,12 +185,15 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
     }
   }
 
-  // Rule: exact custom page collection (throttled).
-  if (state.customPage && normalizedPage === state.customPage) {
-    const key = `page:${state.customPage}`;
-    if (shouldSend(lastSent, key, now)) {
-      itemsToSend.push({ kind: "page", value: state.customPage, seen_at: new Date().toISOString() });
-      lastSent[key] = now;
+  // Rule: exact custom page collection for every saved custom page (throttled).
+  const customPages = state.customPages || [];
+  for (const entry of customPages) {
+    if (normalizedPage === entry.url) {
+      const key = `page:${entry.url}`;
+      if (shouldSend(lastSent, key, now)) {
+        itemsToSend.push({ kind: "page", value: entry.url, seen_at: new Date().toISOString() });
+        lastSent[key] = now;
+      }
     }
   }
 
@@ -185,7 +202,6 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
   // Save throttling state first so we don't re-fire repeatedly if sending fails.
   await setState({ lastSent });
 
-  // Try immediate send. If it fails, queue items.
   try {
     await connectAndSend(state.hostName, {
       type: "collector.sync",
