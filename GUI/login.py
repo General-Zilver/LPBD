@@ -79,6 +79,9 @@ class LoginPage(ctk.CTkFrame):
             command=self.login_button
         ).pack(pady=25, padx=25)
 
+        self.username_entry.bind("<Return>", lambda event: self.login_button())
+        self.password_entry.bind("<Return>", lambda event: self.login_button())
+        
     def sign_up_button(self):
         username = self.username_entry.get()
         password = self.password_entry.get()

@@ -164,7 +164,9 @@ class QuestionPage(ctk.CTkFrame):
             question_card,
             text=self.get_current_question(),
             font=ctk.CTkFont(size=18, weight="bold"),
-            anchor="w"
+            anchor="w",
+            justify="left",
+            wraplength=800
         )
 
         self.question_label.pack(pady=(25, 15), padx=20, anchor="w")
@@ -206,7 +208,10 @@ class QuestionPage(ctk.CTkFrame):
             command=self.next_action
         )
         self.next_button.grid(row=0, column=1, padx=10)
+        self.bind("<Return>", lambda event: self.next_action())
+        self.focus_set()
 
+        self.answer_entry.bind("<Return>", lambda event: self.next_action())
         self.update_next_button_text()
 
     # Question Logic
