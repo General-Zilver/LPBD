@@ -63,6 +63,25 @@ AUTH_UTILITY_SIGNALS = [
     "please authenticate",
 ]
 
+# Titles that indicate error pages, login walls, or other junk.
+JUNK_TITLE_SIGNALS = [
+    "page not found",
+    "not found",
+    "access denied",
+    "sign in",
+    "log in",
+    "login required",
+    "session expired",
+]
+
+_JUNK_TITLE_PATTERN = re.compile(
+    "|".join(re.escape(s) for s in JUNK_TITLE_SIGNALS),
+    re.IGNORECASE,
+)
+
+# Matches "404" as a standalone token, not embedded in longer numbers.
+_404_PATTERN = re.compile(r"\b404\b")
+
 _AUTH_PATTERN = re.compile(
     "|".join(re.escape(s) for s in AUTH_UTILITY_SIGNALS),
     re.IGNORECASE,
@@ -73,6 +92,13 @@ _AUTH_PATTERN = re.compile(
 def _content_quality_check(url, title, normalized_text):
     if len(normalized_text.strip()) < MIN_CONTENT_LENGTH:
         return "empty normalized text"
+
+    # Reject pages whose title matches known junk patterns.
+    match = _JUNK_TITLE_PATTERN.search(title)
+    if match:
+        return f"junk title: {match.group().lower()}"
+    if _404_PATTERN.search(title):
+        return "junk title: 404"
 
     combined = f"{url} {title} {normalized_text[:500]}"
     if _AUTH_PATTERN.search(combined):
@@ -133,6 +159,7 @@ def get_or_build_pack(
     unchanged_urls: List[str] = []
     errors: List[Dict[str, str]] = []
     pack_pages: List[Dict[str, Any]] = []
+    seen_hashes_this_run: set = set()
     should_save_pack = not client_has_pack
 
     try:
@@ -195,6 +222,12 @@ def get_or_build_pack(
                 continue
 
             text_hash = _sha256(normalized_text)
+
+            if text_hash in seen_hashes_this_run:
+                errors.append({"url": url, "error": "duplicate content (same hash as earlier page)"})
+                continue
+            seen_hashes_this_run.add(text_hash)
+
             fetched_at = time.time()
 
             prior_text_hash = merged.get("text_hash")

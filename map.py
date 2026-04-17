@@ -18,6 +18,21 @@ sys.path.insert(0, str(PROJECT_ROOT / "mapper"))
 from mapper import map_domains_batch  # noqa: E402
 
 
+# Duplicates writes to both a terminal stream and a log file.
+class _Tee:
+    def __init__(self, original, log_file):
+        self.original = original
+        self.log_file = log_file
+
+    def write(self, data):
+        self.original.write(data)
+        self.log_file.write(data)
+
+    def flush(self):
+        self.original.flush()
+        self.log_file.flush()
+
+
 # Looks for local_benefits.db in native_host/ first, then the project root.
 def find_db():
     candidates = [
@@ -52,6 +67,23 @@ def domain_to_url(bare):
 
 
 def main():
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = open(log_dir / "map.log", "w", encoding="utf-8")
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = _Tee(original_stdout, log_file)
+    sys.stderr = _Tee(original_stderr, log_file)
+
+    try:
+        _main_inner()
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        log_file.close()
+
+
+def _main_inner():
     parser = argparse.ArgumentParser(description="Map domains collected by the browser extension.")
     parser.add_argument("--db", type=Path, default=None, help="Path to local_benefits.db")
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "mapped_pages.json",
