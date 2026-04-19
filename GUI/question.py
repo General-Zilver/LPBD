@@ -12,6 +12,7 @@ class QuestionPage(ctk.CTkFrame):
         self.controller = controller
         self.update_mode = False 
         self.target_question = None 
+        self.section_update_mode = False
 
         if selected_options is None:
             selected_options = controller.session.get("selected_options",[])
@@ -207,11 +208,35 @@ class QuestionPage(ctk.CTkFrame):
             width=160,
             command=self.next_action
         )
+
+        # Always create it, but don't show yet
+        self.save_close_button = ctk.CTkButton(
+            button_row,
+            text="Save & Close",
+            width=160,
+            fg_color="#2E8B57",
+            hover_color="#1E5F3A",
+            command=self.save_and_close
+        )
+        if self.update_mode:
+            self.next_button.configure(text="Finish")
+            self.section_update_mode = False  # single question mode
+            self.save_close_button.grid_forget()
+        elif self.section_update_mode:
+            self.next_button.configure(text="Finish")
+
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+
+        else:
+            #if hasattr(self, "save_close_button") and self.save_close_button.winfo_ismapped():
+            self.save_close_button.grid_forget()
         self.next_button.grid(row=0, column=1, padx=10)
-        self.bind("<Return>", lambda event: self.next_action())
+        # self.bind("<Return>", lambda event: self.next_action())
         self.focus_set()
 
-        self.answer_entry.bind("<Return>", lambda event: self.next_action())
+        # self.answer_entry.bind("<Return>", lambda event: self.next_action())
+        self.answer_entry.bind("<Return>", lambda event: self.on_enter())
         self.update_next_button_text()
 
     # Question Logic
@@ -319,13 +344,38 @@ class QuestionPage(ctk.CTkFrame):
         self.update_progress()
         self.update_next_button_text()
 
-    # Button Text
     def update_next_button_text(self):
 
-        # Single question update mode
-        if getattr(self, "update_mode", False):
+        # UPDATE MODE
+        if self.update_mode:
             self.next_button.configure(text="Finish")
+            self.save_close_button.grid_forget()
+
             return
+        # SECTION UPDATE MODE (full section edit)
+        if self.section_update_mode:
+
+            current_section = self.selected_options[self.current_step - 1]
+            section_questions = self.questions.get(current_section, [])
+
+            if self.current_question_index < len(section_questions) - 1:
+                self.next_button.configure(text="Next")
+            elif self.current_step < len(self.selected_options):
+                next_section = self.selected_options[self.current_step]
+                self.next_button.configure(text=f"Next: {next_section}")
+            else:
+                self.next_button.configure(text="Finish")
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+            return
+
+        # NORMAL MODE → hide button if visible
+        if hasattr(self, "save_close_button") and self.save_close_button.winfo_ismapped():
+            #self.save_close_button.grid_forget()
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+            return
+
 
         if not self.selected_options or self.current_step > len(self.selected_options):
             self.next_button.configure(text="Finish")
@@ -336,13 +386,12 @@ class QuestionPage(ctk.CTkFrame):
 
         if self.current_question_index < len(section_questions) - 1:
             self.next_button.configure(text="Next")
-            return
-
         elif self.current_step < len(self.selected_options):
             next_section = self.selected_options[self.current_step]
             self.next_button.configure(text=f"Next: {next_section}")
         else:
             self.next_button.configure(text="Finish")
+    
     # Inside QuestionPage class
     def refresh_current_question(self):
         if not self.winfo_exists():
@@ -374,3 +423,23 @@ class QuestionPage(ctk.CTkFrame):
         # Update progress bar and button text
         self.update_progress()
         self.update_next_button_text()
+
+    def save_and_close(self):
+        answer = self.answer_entry.get()
+        question = self.get_current_question()
+        current_section = self.selected_options[self.current_step - 1]
+
+        username = self.controller.session["username"]
+
+        # Save exactly like next_action
+        from answers import save_answers
+        save_answers(username, question, current_section, answer)
+
+        print("Saved and exiting update mode")
+
+        self.controller.show_page("chat")
+
+    def on_enter(self):
+        # In update mode, Enter should NOT do anything except maybe ignore or optional save
+
+        self.next_action()

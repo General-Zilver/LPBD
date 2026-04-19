@@ -33,6 +33,14 @@ class SettingsOverlay(ctk.CTkFrame):
                 command=self.open_update_form
             ).pack(pady=10, padx=20, anchor="w")
 
+        ctk.CTkButton(
+            self,
+            text="Close App",
+            fg_color="#8B0000",  # dark red
+            hover_color="#5A0000",
+            command=self.close_app
+        ).pack(pady=10, padx=20, anchor="w")
+
         # Spacer
         ctk.CTkLabel(self, text="").pack(expand=True)
 
@@ -107,6 +115,20 @@ class SettingsOverlay(ctk.CTkFrame):
         if self.question_page:
             self.question_page.pack(fill="both", expand=True)
 
+    def close_app(self):
+        try:
+            # Optional: save anything here before exit
+            print("Closing app gracefully...")
+
+            root = self.winfo_toplevel()
+
+            # Proper Tkinter shutdown sequence
+            root.quit()      # stop mainloop
+            root.destroy()   # destroy all widgets
+
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+
 
 class UpdatePage(ctk.CTkFrame):
     def __init__(self, parent, controller, question_page, user_answers):
@@ -178,6 +200,7 @@ class UpdatePage(ctk.CTkFrame):
         qp.current_question_index = 0
 
         qp.update_mode = False
+        qp.section_update_mode = True
         qp.target_question = None
 
         qp.refresh_current_question()
@@ -208,6 +231,7 @@ class UpdatePage(ctk.CTkFrame):
 
         # Enable single question update mode
         qp.update_mode = True
+        qp.section_update_mode = False
         qp.target_question = question
 
         qp.refresh_current_question()
