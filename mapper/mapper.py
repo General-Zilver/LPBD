@@ -31,11 +31,26 @@ EXCLUDED_PATH_FRAGMENTS = [
     "/wp-admin", "/wp-login",
     "/pre_apply", "/print_preview", "/bookmarks",
     "/user/forgot", "/user/edit",
+    # Calendar and event infrastructure that generates thousands of per-day pages.
+    "/event/", "/events/", "/venue/", "/venues/",
+    "/group/", "/groups/",
+    "/photo/", "/photos/",
+    "/calendar/", "/calendar",
+    "/category/", "/tag/",
+    # Old catalog archives that bloat the crawl with outdated content.
+    "/archive/", "/archive",
 ]
 
 # Entire subdomains to skip (portals, admin panels, etc.).
 EXCLUDED_SUBDOMAINS = [
     "my.utrgv.edu",
+    # Auth-walled portals where every page is empty or login-gated.
+    "brightspace.utrgv.edu",
+    "careers.utrgv.edu",
+    "assist.utrgv.edu",
+    # Dedicated calendar/event subdomains that produce per-day noise.
+    "calendar.utrgv.edu",
+    "events.southtexascollege.edu",
 ]
 
 # Likely benefit-related paths to seed into BFS so we hit relevant content fast
@@ -205,7 +220,8 @@ def clean_and_join(base_url, href):
     if parsed.scheme not in {"http", "https"}:
         return None
 
-    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    # Normalize http to https so we don't discover both variants of the same page.
+    clean_url = f"https://{parsed.netloc}{parsed.path}"
     lower_path = parsed.path.lower()
     if any(lower_path.endswith(ext) for ext in SKIP_EXTENSIONS):
         return None
@@ -316,17 +332,19 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
               max_pages=None, delay=0.3):
     session = session or _build_session()
 
-    # Filter preseed (sitemap URLs) so junk URLs don't end up in results.
-    results = set()
-    for url in (preseed or set()):
-        if not _is_excluded_url(url):
-            results.add(url)
+    # Preseed (sitemap URLs) should already be filtered by map_domain before
+    # reaching here, so we accept them directly.
+    results = set(preseed or set())
 
     visited = set()                   # URLs we've fetched
     queued = set()                    # URLs ever added to queue (prevents re-enqueue)
     queue = deque()
 
-    # Always start from the homepage.
+    # If the homepage itself is excluded (e.g. entire subdomain blocked), abort early.
+    if _is_excluded_url(base_url):
+        print(f"   Homepage {base_url} is excluded. Skipping BFS.")
+        return results, 0
+
     queue.append(base_url)
     queued.add(base_url)
 
@@ -400,11 +418,18 @@ def map_domain(url, include_subdomains=True, max_pages=None, delay=0.3):
 
     try:
         # Step 1: Try to grab the sitemap for a free head start.
-        sitemap_urls = fetch_sitemap_urls(url, session=session, include_subdomains=include_subdomains)
+        sitemap_urls_raw = fetch_sitemap_urls(url, session=session, include_subdomains=include_subdomains)
+        sitemap_raw_count = len(sitemap_urls_raw)
+
+        # Filter junk from sitemap URLs before passing to BFS.
+        sitemap_urls, sitemap_filtered = filter_urls(sitemap_urls_raw)
         sitemap_count = len(sitemap_urls)
 
-        if sitemap_urls:
-            print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs.")
+        if sitemap_raw_count:
+            if sitemap_filtered:
+                print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs ({sitemap_filtered} filtered out).")
+            else:
+                print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs.")
         else:
             print("   No sitemap found. BFS will do all discovery.")
 
@@ -422,10 +447,10 @@ def map_domain(url, include_subdomains=True, max_pages=None, delay=0.3):
         crawl_found = len(all_urls) - sitemap_count
         print(f"   BFS fetched {pages_fetched} pages, discovered {crawl_found} additional URLs.")
 
-        # Step 3: Filter out junk URLs (login, admin, translated portals, etc.)
+        # Safety net: catch any excluded URLs that slipped through via preseed.
         all_urls, excluded_count = filter_urls(all_urls)
         if excluded_count:
-            print(f"   Filtered out {excluded_count} junk URL(s).")
+            print(f"   Filtered out {excluded_count} sitemap URL(s).")
 
         return {
             "status": "success",

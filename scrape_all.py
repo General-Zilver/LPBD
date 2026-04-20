@@ -18,6 +18,22 @@ import requests
 
 from custom_pages import load_custom_pages, update_page_status
 
+
+# Duplicates writes to both a terminal stream and a log file.
+class _Tee:
+    def __init__(self, original, log_file):
+        self.original = original
+        self.log_file = log_file
+
+    def write(self, data):
+        self.original.write(data)
+        self.log_file.write(data)
+
+    def flush(self):
+        self.original.flush()
+        self.log_file.flush()
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_INPUT = PROJECT_ROOT / "mapped_pages.json"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "scraped_output"
@@ -30,8 +46,8 @@ def start_server(port):
          "worker_service.scrape:app",
          "--host", "127.0.0.1", "--port", str(port)],
         cwd=str(PROJECT_ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     base_url = f"http://127.0.0.1:{port}"
     for attempt in range(10):
@@ -79,13 +95,19 @@ BATCH_SIZE = 100
 
 
 # Sends one batch of URLs to the scrape API and returns the JSON response.
-def _scrape_batch(domain_url, url_list, api_url, force_refresh=False, timeout_s=30):
+def _scrape_batch(domain_url, url_list, api_url, timeout_s=30):
     payload = {
         "domain": domain_url,
         "pages": [{"url": u} for u in url_list],
         "mode": "fetch_if_changed",
+        # force_refresh=True bypasses the pack_store cache read so each
+        # batch gets its own URLs processed.
+        # client_has_pack=False tells the worker we want full page content
+        # returned for every URL, not just a changed/unchanged summary.
+        # scrape_all.py writes fresh output files on every run and doesn't
+        # retain prior pack state.
         "options": {
-            "force_refresh": force_refresh,
+            "force_refresh": True,
             "client_has_pack": False,
             "timeout_s": timeout_s,
             "rate_limit_ms": 300,
@@ -96,23 +118,26 @@ def _scrape_batch(domain_url, url_list, api_url, force_refresh=False, timeout_s=
     return resp.json()
 
 
-# Scrapes a domain in batches of BATCH_SIZE URLs. Saves results after each
-# batch so progress isn't lost if a later batch fails. Returns aggregate counts.
-def scrape_domain(domain_url, url_list, api_url, output_dir,
-                  force_refresh=False, timeout_s=30):
+# Scrapes a domain in batches of BATCH_SIZE URLs. Accumulates all changed
+# pages across batches, then writes one output file per domain. Old files for
+# the same domain are removed first so stale data doesn't pile up.
+def scrape_domain(domain_url, url_list, api_url, output_dir, timeout_s=30):
     batches = [url_list[i:i + BATCH_SIZE]
                for i in range(0, len(url_list), BATCH_SIZE)]
     num_batches = len(batches)
     total_scraped = 0
     total_unchanged = 0
     total_errors = 0
+    all_changed_pages = []
+
+    print(f"  Processing {len(url_list)} URLs in {num_batches} batch(es)...")
 
     for batch_num, batch_urls in enumerate(batches, 1):
         if num_batches > 1:
             print(f"  Batch {batch_num}/{num_batches}: {len(batch_urls)} pages...")
 
         result = _scrape_batch(domain_url, batch_urls, api_url,
-                               force_refresh=force_refresh, timeout_s=timeout_s)
+                               timeout_s=timeout_s)
 
         scraped = len(result["changed_pages"])
         unchanged = len(result["unchanged_urls"])
@@ -120,6 +145,7 @@ def scrape_domain(domain_url, url_list, api_url, output_dir,
         total_scraped += scraped
         total_unchanged += unchanged
         total_errors += errors
+        all_changed_pages.extend(result["changed_pages"])
 
         if num_batches > 1:
             print(f"    Scraped: {scraped} | Unchanged: {unchanged} | Errors: {errors}")
@@ -128,12 +154,30 @@ def scrape_domain(domain_url, url_list, api_url, output_dir,
             for err in result["errors"]:
                 print(f"    - {err['url']}: {err['error']}")
 
-        if result["changed_pages"]:
-            filepath = save_results(domain_url, result, output_dir)
-            if num_batches > 1:
-                print(f"    Saved to: {filepath}")
+    # Write one consolidated file per domain and remove old ones.
+    if all_changed_pages:
+        _remove_old_domain_files(domain_url, output_dir)
+        merged_result = {
+            "domain": domain_url,
+            "checked_at": datetime.now().isoformat(),
+            "cache_hit": False,
+            "changed_pages": all_changed_pages,
+            "unchanged_urls": [],
+            "errors": [],
+        }
+        filepath = save_results(domain_url, merged_result, output_dir)
+        print(f"  Saved to: {filepath}")
 
     return total_scraped, total_unchanged, total_errors
+
+
+# Removes previous scraped output files for a domain so we don't accumulate stale data.
+def _remove_old_domain_files(domain_url, output_dir):
+    host = urlparse(domain_url).netloc.replace(".", "_")
+    output_dir = Path(output_dir)
+    for old_file in output_dir.glob(f"scraped_{host}_*.txt"):
+        old_file.unlink()
+
 
 
 # Writes one consolidated text file per domain with all the scraped page content.
@@ -227,6 +271,23 @@ def scrape_custom_pages(custom_pages, api_url, output_dir, timeout_s=30):
 
 
 def main():
+    log_dir = PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = open(log_dir / "scrape_all.log", "w", encoding="utf-8")
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = _Tee(original_stdout, log_file)
+    sys.stderr = _Tee(original_stderr, log_file)
+
+    try:
+        _main_inner()
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        log_file.close()
+
+
+def _main_inner():
     parser = argparse.ArgumentParser(description="Scrape all mapped domain pages.")
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT,
                         help="Path to mapped_pages.json")
@@ -238,8 +299,6 @@ def main():
                         help="(Deprecated, now the default) Scrape all mapped pages")
     parser.add_argument("--port", type=int, default=8000,
                         help="Port for the scrape worker")
-    parser.add_argument("--force", action="store_true",
-                        help="Bypass change detection and re-scrape every page")
     args = parser.parse_args()
 
     print("=== LPBD Scraper ===\n")
@@ -264,9 +323,7 @@ def main():
     if custom:
         print(f"Loaded {len(custom)} custom page(s).")
 
-    if args.force:
-        print("Force mode: re-scraping all pages regardless of cache.\n")
-    elif args.max_pages:
+    if args.max_pages:
         print(f"Using --max-pages {args.max_pages} per domain.\n")
     else:
         print("Scraping ALL mapped pages.\n")
@@ -291,7 +348,6 @@ def main():
                 try:
                     scraped, unchanged, errors = scrape_domain(
                         domain, urls, api_url, args.output_dir,
-                        force_refresh=args.force,
                     )
                     total_scraped += scraped
                     total_errors += errors
