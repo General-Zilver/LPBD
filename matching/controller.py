@@ -48,7 +48,7 @@ def run_matching_pipeline(
     delay=5,
     scraped_dir=None,
     output=None,
-    verify_pass2=False,
+    verify_pass2=True,
     low_priority=False,
     num_threads=None,
     profile_keywords=True,
