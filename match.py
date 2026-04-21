@@ -24,8 +24,15 @@ def main():
                         help="Seconds between Ollama calls (default: 5)")
     parser.add_argument(
         "--verify-pass2",
+        dest="verify_pass2",
         action="store_true",
-        help="Enable a second strict LLM verification pass before deterministic validation",
+        help="Enable a second strict LLM verification pass before deterministic validation (default: on)",
+    )
+    parser.add_argument(
+        "--no-verify-pass2",
+        dest="verify_pass2",
+        action="store_false",
+        help="Disable the second strict LLM verification pass",
     )
     parser.add_argument(
         "--low-priority",
@@ -50,7 +57,7 @@ def main():
         action="store_false",
         help="Disable profile-derived keyword suggestions and use only base keywords",
     )
-    parser.set_defaults(profile_keywords=True)
+    parser.set_defaults(verify_pass2=True, profile_keywords=True)
     parser.add_argument("--scraped-dir", type=Path, default=PROJECT_ROOT / "scraped_output",
                         help="Directory with scraped output files")
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "matched_benefits.json",

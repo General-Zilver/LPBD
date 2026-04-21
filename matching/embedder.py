@@ -31,44 +31,6 @@ def ensure_model():
     print(f"  Model '{EMBED_MODEL}' ready.")
 
 
-# Common footer/nav markers on .edu/.gov sites. Everything from the first
-# match onward gets chopped so the embedding reflects actual page content.
-FOOTER_MARKERS = [
-    "site policies", "required links", "accessibility", "privacy policy",
-    "terms of use", "contact us", "footer", "copyright ©", "all rights reserved",
-    "back to top", "social media", "follow us", "stay connected",
-]
-
-# Common header/nav junk that appears before real content on many pages.
-HEADER_MARKERS = [
-    "skip to main content", "skip to content", "main navigation",
-    "search this site", "toggle navigation", "menu",
-]
-
-
-# Strips nav headers and footer boilerplate so the vector represents
-# actual benefit content instead of site chrome.
-def strip_boilerplate(text):
-    lower = text.lower()
-
-    # Chop everything before the last header marker (they appear at the top)
-    best_start = 0
-    for marker in HEADER_MARKERS:
-        idx = lower.find(marker)
-        if idx != -1:
-            end_of_marker = idx + len(marker)
-            if end_of_marker > best_start:
-                best_start = end_of_marker
-
-    # Chop everything from the first footer marker onward
-    best_end = len(text)
-    for marker in FOOTER_MARKERS:
-        idx = lower.find(marker, best_start)
-        if idx != -1 and idx < best_end:
-            best_end = idx
-
-    cleaned = text[best_start:best_end].strip()
-    return cleaned if cleaned else text
 
 
 # Caps at 6000 characters for the embedding. This is just Tier 1 similarity
@@ -82,10 +44,8 @@ def truncate_for_embedding(text):
 
 
 # Embeds a single text string, returns the float vector.
-# Strips boilerplate and truncates before sending to nomic-embed-text.
 def embed_text(text):
-    cleaned = strip_boilerplate(text)
-    return ollama_client.embed(truncate_for_embedding(cleaned), model=EMBED_MODEL)
+    return ollama_client.embed(truncate_for_embedding(text), model=EMBED_MODEL)
 
 
 # Parses scraped output files and yields (url, title, text, text_hash) tuples.
