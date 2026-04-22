@@ -3,6 +3,9 @@ import customtkinter as ctk
 from tkinter import filedialog
 from chat import ChatPage
 from settings import SettingsOverlay
+import json 
+with open("institutions.json", "r") as f:
+    INSTITUTIONS = json.load(f)
 
 
 class QuestionPage(ctk.CTkFrame):
@@ -176,14 +179,23 @@ class QuestionPage(ctk.CTkFrame):
         input_row.pack(padx=20, pady=10, fill="x")
 
         input_row.grid_columnconfigure(0, weight=1)
+        # ALWAYS create StringVar
+        self.answer_var = ctk.StringVar()
+        self.answer_var.trace_add("write", self.update_dropdown)
 
+        # Entry (used for ALL questions)
         self.answer_entry = ctk.CTkEntry(
             input_row,
+            textvariable=self.answer_var,
             placeholder_text="Type your answer here...",
             height=40
         )
         self.answer_entry.grid(row=0, column=0, padx=(0, 10), sticky="ew")
 
+        # Dropdown (used ONLY for institution)
+        self.dropdown = ctk.CTkScrollableFrame(input_row, height=150)
+        self.dropdown.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        self.dropdown.grid_remove()
         ctk.CTkButton(
             input_row,
             text="Upload Document",
@@ -239,6 +251,69 @@ class QuestionPage(ctk.CTkFrame):
         self.answer_entry.bind("<Return>", lambda event: self.on_enter())
         self.update_next_button_text()
 
+    def is_institution_question(self):
+        return self.get_current_question() == "What is your institution name?"
+
+    def select_institution(self, school_name):
+        self.answer_var.set(school_name)
+        self.dropdown.grid_remove()
+
+    def get_selected_institution(self):
+        value = self.answer_var.get().lower()
+
+        for inst in INSTITUTIONS:
+            names = [inst["name"]] + inst.get("aliases", [])
+            for name in names:
+                if value == name.lower():
+                    return inst  # canonical
+
+        return {
+            "name": self.answer_var.get(),
+            "aliases": [],
+            "domain": "",
+            "state": ""
+        }
+
+    def update_dropdown(self, *args):
+        if not self.is_institution_question():
+            return
+
+        query = self.answer_var.get().lower()
+
+        # Clear previous results
+        for widget in self.dropdown.winfo_children():
+            widget.destroy()
+
+        if not query:
+            self.dropdown.grid_remove()
+            return
+
+        matches = []
+
+        for inst in INSTITUTIONS:
+            names = [inst["name"]] + inst.get("aliases", [])
+            for name in names:
+                if query in name.lower():
+                    matches.append(inst["name"])
+                    break
+
+        matches = list(dict.fromkeys(matches))[:10]  # dedupe + limit
+
+        if not matches:
+            self.dropdown.grid_remove()
+            return
+
+        self.dropdown.grid()
+
+        for school in matches:
+            btn = ctk.CTkButton(
+                self.dropdown,
+                text=school,
+                anchor="w",
+                command=lambda s=school: self.select_institution(s)
+            )
+            btn.pack(fill="x", padx=5, pady=2)
+
     # Question Logic
     def get_current_question(self):
         if not self.selected_options or self.current_step > len(self.selected_options):
@@ -264,7 +339,10 @@ class QuestionPage(ctk.CTkFrame):
     def next_action(self):
         
 
-        answer = self.answer_entry.get()
+        if self.is_institution_question():
+            answer = self.get_selected_institution()
+        else:
+            answer = self.answer_entry.get()
         question = self.get_current_question()
         current_section = self.selected_options[self.current_step - 1]
 
@@ -402,6 +480,19 @@ class QuestionPage(ctk.CTkFrame):
         if not self.selected_options:
             self.question_label.configure(text="No section selected")
             return
+        question = self.get_current_question()
+        self.question_label.configure(text=question)
+
+        self.answer_var.set("")
+        self.dropdown.grid_remove()
+        if self.is_institution_question():
+            self.answer_entry.configure(
+                placeholder_text="Enter you institution name..."
+            )
+        else:
+            self.answer_entry.configure(
+                placeholder_text="Type your answer here..."
+            )
 
         current_section = self.selected_options[self.current_step - 1]
         section_questions = self.questions.get(current_section, [])
