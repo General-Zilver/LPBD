@@ -25,6 +25,9 @@ class MatchResult:
     action_details: str
     evidence_quote: str = ""
     evidence_type: str = ""
+    institution_scope: str = ""   # home | other | broad | ""
+    eligibility_status: str = ""  # likely_eligible | needs_info | not_eligible | ""
+    match_type: str = ""          # direct_match | general_resource | aspirational | needs_info | not_likely | ""
     cross_references: list[CrossReference] = field(default_factory=list)
     inferred_from: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -42,6 +45,9 @@ class MatchResult:
         data.setdefault("benefit_name", "")
         data.setdefault("evidence_quote", "")
         data.setdefault("evidence_type", "")
+        data.setdefault("institution_scope", "")
+        data.setdefault("eligibility_status", "")
+        data.setdefault("match_type", "")
         return cls(cross_references=refs, **data)
 
 
@@ -93,8 +99,10 @@ class MatchResultsEnvelope:
             "pipeline_progress": self.pipeline_progress.to_dict() if self.pipeline_progress else None,
             "results": sorted(
                 [r.to_dict() for r in self.results],
-                key=lambda x: x["relevance_score"],
-                reverse=True,
+                key=lambda x: (
+                    x.get("evidence_type") == "keyword-detection",
+                    -x["relevance_score"],
+                ),
             ),
             "result_count": self.result_count,
             "last_updated": self.last_updated,

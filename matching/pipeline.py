@@ -4,11 +4,13 @@
 
 import hashlib
 import json
+import re
 import sys
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import ollama_client
@@ -28,15 +30,47 @@ from matching.models import (
     MatchResultsEnvelope,
 )
 from matching.filter import filter_pages
-from matching.matcher import match_pages, load_scraped_lookup
+from matching.matcher import match_pages, load_scraped_lookup, format_profile, extract_user_institution
 from matching.profile_keywords import build_profile_keyword_map
+from matching.profile_signals import build_profile_signals
 from matching.validator import (
     validate_matches,
     detect_missed_benefits,
     verify_matches_with_llm,
+    hard_eligibility_gate,
+    normalize_output_matches,
+    sanitize_match_text_fields,
 )
 
 STAGES = ["filtering", "matching"]
+
+_PREHEALTH_MAJOR_TERMS = {
+    "biology",
+    "pre-med",
+    "pre med",
+    "pre-health",
+    "pre health",
+    "biomedical sciences",
+    "chemistry",
+}
+
+_PREHEALTH_PAGE_TERMS = {
+    "pre-health",
+    "prehealth",
+    "mcat",
+    "shadowing",
+    "clinical observation",
+}
+
+_PREHEALTH_RESCUE_BENEFIT_NAME = "Pre-Health Shadowing and MCAT Support Program"
+
+_DOMAIN_QUESTIONS = [
+    "what is your school's website domain?",
+    "what is your school website domain?",
+    "what is your institution website domain?",
+    "what is your institution's website domain?",
+    "what school websites should be treated as your school or target schools?",
+]
 
 
 # Prints one line of resource stats: RAM, CPU, and which Ollama model is loaded.
@@ -74,6 +108,178 @@ def log_resources(label, verbose=False, expected_model=None):
 def _build_llm_options(num_threads=None):
     if isinstance(num_threads, int) and num_threads > 0:
         return {"num_thread": num_threads}
+    return None
+
+
+def _clean_hostname(url_or_domain):
+    text = str(url_or_domain or "").strip().lower()
+    if not text:
+        return ""
+    if "://" in text:
+        text = urlparse(text).netloc.lower()
+    if text.startswith("www."):
+        text = text[4:]
+    return text.split("/")[0]
+
+
+def _hostname_matches_domain(hostname, domain):
+    h = _clean_hostname(hostname)
+    d = _clean_hostname(domain)
+    if not h or not d:
+        return False
+    return h == d or h.endswith("." + d)
+
+
+def _extract_user_home_domains(answers):
+    for question, section_dict in (answers or {}).items():
+        if str(question or "").lower() not in _DOMAIN_QUESTIONS:
+            continue
+        if not isinstance(section_dict, dict):
+            raw = str(section_dict or "").strip()
+            if not raw:
+                continue
+            parts = [_clean_hostname(p.strip()) for p in raw.split(",")]
+            domains = [p for p in parts if p]
+            if domains:
+                return domains
+            continue
+        for _section, value in section_dict.items():
+            raw = str(value or "").strip()
+            if not raw:
+                continue
+            parts = [_clean_hostname(p.strip()) for p in raw.split(",")]
+            domains = [p for p in parts if p]
+            if domains:
+                return domains
+    return []
+
+
+def _contains_any(text, terms):
+    lower = str(text or "").lower()
+    return any(term in lower for term in terms)
+
+
+def _major_terms_support_prehealth(profile_signals):
+    major_terms = profile_signals.get("major_terms") if isinstance(profile_signals, dict) else []
+    if not isinstance(major_terms, list):
+        return False
+    for term in major_terms:
+        lower = str(term or "").strip().lower()
+        if not lower:
+            continue
+        normalized = lower.replace("-", " ")
+        if any(target in lower or target in normalized for target in _PREHEALTH_MAJOR_TERMS):
+            return True
+    return False
+
+
+def _is_home_institution_page(page_url, answers):
+    hostname = _clean_hostname(page_url)
+    if not hostname:
+        return False
+    home_domains = _extract_user_home_domains(answers or {})
+    if not home_domains:
+        return True
+    return any(_hostname_matches_domain(hostname, d) for d in home_domains)
+
+
+def _select_prehealth_evidence_quote(page_text):
+    if not page_text:
+        return ""
+
+    preferred_quotes = [
+        "The Pre-Health Shadowing and MCAT Support Program connects qualified UTRGV students with physician shadowing opportunities, basic clinical observation training, and a limited number of MCAT preparation vouchers.",
+        "The program is intended for students exploring medical school, dental school, physician assistant programs, or other health professional pathways.",
+        "MCAT preparation voucher up to $600.",
+    ]
+    for quote in preferred_quotes:
+        if quote in page_text:
+            return quote
+
+    sentences = re.split(r"(?<=[.!?])\s+", page_text)
+    for sentence in sentences:
+        snippet = sentence.strip()
+        if not snippet:
+            continue
+        if snippet in page_text and _contains_any(snippet, _PREHEALTH_PAGE_TERMS):
+            return snippet
+    return ""
+
+
+def _detect_source_type_for_rescue(url):
+    host = urlparse(url).netloc.lower()
+    if host.endswith(".edu") or ".edu." in host:
+        return "edu"
+    if host.endswith(".gov") or ".gov." in host:
+        return "gov"
+    return "custom"
+
+
+def _build_prehealth_rescue_match(validated_results, scraped_lookup, answers, profile_signals, pipeline_run_id):
+    existing_urls = {str(r.page_url or "").strip() for r in (validated_results or [])}
+
+    if not _major_terms_support_prehealth(profile_signals):
+        return None
+
+    for page_url, payload in (scraped_lookup or {}).items():
+        if page_url in existing_urls:
+            continue
+
+        title = ""
+        page_text = ""
+        if isinstance(payload, tuple) and len(payload) >= 2:
+            title = payload[0] or ""
+            page_text = payload[1] or ""
+
+        search_blob = " ".join([str(page_url or ""), str(title or ""), str(page_text or "")])
+        if not _contains_any(search_blob, _PREHEALTH_PAGE_TERMS):
+            continue
+
+        if not _is_home_institution_page(page_url, answers):
+            continue
+
+        evidence_quote = _select_prehealth_evidence_quote(page_text)
+        if not evidence_quote or evidence_quote not in page_text:
+            continue
+
+        rescue = MatchResult(
+            match_id=str(uuid.uuid4()),
+            page_url=page_url,
+            page_title=title,
+            source_type=_detect_source_type_for_rescue(page_url),
+            relevance_score=5,
+            benefit_name=_PREHEALTH_RESCUE_BENEFIT_NAME,
+            action="apply",
+            summary=(
+                "The program supports pre-health students with shadowing, MCAT preparation, "
+                "or related medical-school preparation resources."
+            ),
+            reasoning=(
+                "The profile signals include a pre-health or biology major path, "
+                "and the page describes a pre-health support program."
+            ),
+            action_details="Submit the pre-health interest form or follow the page instructions.",
+            evidence_quote=evidence_quote,
+            evidence_type="deterministic-profile-signal",
+            institution_scope="home",
+            eligibility_status="likely_eligible",
+            match_type="direct_match",
+            cross_references=[],
+            inferred_from=["major_terms"],
+            tags=["health", "student-support"],
+            matched_at=datetime.now().isoformat(),
+            pipeline_run_id=pipeline_run_id,
+            status="new",
+        )
+
+        rescue_valid, _rescue_rejected = validate_matches(
+            [rescue],
+            scraped_lookup or {},
+            answers=answers,
+        )
+        if rescue_valid:
+            return rescue_valid[0]
+
     return None
 
 
@@ -201,6 +407,8 @@ def upsert_results(existing, new_results):
             old.reasoning = r.reasoning
             old.action_details = r.action_details
             old.inferred_from = r.inferred_from
+            old.eligibility_status = getattr(r, "eligibility_status", "")
+            old.match_type = getattr(r, "match_type", "")
             old.matched_at = r.matched_at
             old.pipeline_run_id = r.pipeline_run_id
             merged.append(old)
@@ -219,7 +427,16 @@ def upsert_results(existing, new_results):
 
 # -- cross-references ------------------------------------------------------
 
+# Strips www. from a parsed hostname for consistent comparison.
+def _normalize_host(url):
+    host = urlparse(url).netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
 # Finds results from different pages that share tags and links them.
+# Requires 2+ shared tags, or 1 shared tag if both pages are on the same host.
 def compute_cross_references(results):
     for r in results:
         r.cross_references = []
@@ -232,6 +449,9 @@ def compute_cross_references(results):
                 continue
             shared = set(a.tags) & set(b.tags)
             if not shared:
+                continue
+            same_hostname = _normalize_host(a.page_url) == _normalize_host(b.page_url)
+            if len(shared) < 2 and not (same_hostname and len(shared) >= 1):
                 continue
             tag_str = ", ".join(sorted(shared))
             a.cross_references.append(
@@ -248,6 +468,35 @@ def compute_cross_references(results):
             )
 
 
+# -- benefit_name dedup ----------------------------------------------------
+
+# Caps how many matches share the same benefit_name across pages.
+# Keeps the top per_name_cap by score, evidence presence, and detail length.
+def dedup_by_benefit_name(results, per_name_cap=3):
+    groups = {}
+    for r in results:
+        name = " ".join((r.benefit_name or "").lower().split())
+        if not name:
+            key = f"{r.page_url}|{r.summary}"
+        else:
+            key = name
+        groups.setdefault(key, []).append(r)
+
+    out = []
+    for group in groups.values():
+        sorted_group = sorted(
+            group,
+            key=lambda m: (
+                m.relevance_score,
+                1 if m.evidence_quote else 0,
+                len(m.action_details or ""),
+            ),
+            reverse=True,
+        )
+        out.extend(sorted_group[:per_name_cap])
+    return out
+
+
 # -- pipeline orchestrator -------------------------------------------------
 
 
@@ -260,7 +509,7 @@ def run_pipeline(
     model=None,
     delay=5,
     verbose=False,
-    verify_pass2=False,
+    verify_pass2=True,
     low_priority=False,
     num_threads=None,
     use_profile_keywords=True,
@@ -483,13 +732,20 @@ def run_pipeline(
     t0 = time.time()
     llm_proposed = len(new_results)
     pass2_rejected = []
+    hard_gate_rejected = []
     rejected = []
+
+    profile_text = format_profile(answers)
+    user_institution = extract_user_institution(answers)
+    profile_signals = build_profile_signals(answers)
 
     if verify_pass2 and new_results:
         print("\n--- Pass 2 Verification (LLM) ---")
         new_results, pass2_rejected = verify_matches_with_llm(
             new_results,
             scraped,
+            profile_text=profile_text,
+            user_institution=user_institution,
             model=model,
             llm_options=llm_options,
         )
@@ -503,8 +759,28 @@ def run_pipeline(
                 print(f"    - {reason}: {count}")
 
     if new_results:
+        print("\n--- Hard Eligibility Gate ---")
+        new_results, hard_gate_rejected = hard_eligibility_gate(
+            new_results,
+            answers=answers,
+            scraped_lookup=scraped,
+            profile_signals=profile_signals,
+        )
+        print(
+            f"  {len(new_results)} hard-gate passed, "
+            f"{len(hard_gate_rejected)} hard-gate rejected"
+        )
+        if hard_gate_rejected:
+            reasons = {}
+            for r in hard_gate_rejected:
+                reason = getattr(r, "rejection_reason", "unknown")
+                reasons[reason] = reasons.get(reason, 0) + 1
+            for reason, count in sorted(reasons.items(), key=lambda x: -x[1]):
+                print(f"    - {reason}: {count}")
+
+    if new_results:
         print("\n--- Validating ---")
-        new_results, rejected = validate_matches(new_results, scraped)
+        new_results, rejected = validate_matches(new_results, scraped, answers=answers)
         print(f"  {len(new_results)} validated, {len(rejected)} rejected")
         if rejected:
             reasons = {}
@@ -514,10 +790,22 @@ def run_pipeline(
             for reason, count in sorted(reasons.items(), key=lambda x: -x[1]):
                 print(f"    - {reason}: {count}")
 
+    rescue_match = _build_prehealth_rescue_match(
+        validated_results=new_results,
+        scraped_lookup=scraped,
+        answers=answers,
+        profile_signals=profile_signals,
+        pipeline_run_id=run_id,
+    )
+    if rescue_match:
+        print("\n--- Deterministic Rescue ---")
+        print(f"  Added 1 pre-health rescue match: {rescue_match.page_url}")
+        new_results.append(rescue_match)
+
     ollama_client.unload_model(model)
     print(f"  Unloaded {model}")
 
-    all_rejected = pass2_rejected + rejected
+    all_rejected = pass2_rejected + hard_gate_rejected + rejected
     timings["validate"] = time.time() - t0
 
     # ---- stage 2.6: missed benefit detection ----
@@ -528,6 +816,7 @@ def run_pipeline(
         answers,
         new_results,
         pipeline_run_id=run_id,
+        rejected_matches=all_rejected,
     )
     if keyword_matches:
         print(f"  {len(keyword_matches)} keyword-detected benefit(s):")
@@ -538,6 +827,8 @@ def run_pipeline(
         print("  No additional benefits detected.")
     timings["detect"] = time.time() - t0
 
+    sanitize_match_text_fields(new_results)
+
     _track_ram()
 
     # Collect stats for callers that want detailed reporting
@@ -547,6 +838,7 @@ def run_pipeline(
         "llm_validated": max(0, llm_proposed - len(all_rejected)),
         "rejected": all_rejected,
         "pass2_rejected": pass2_rejected,
+        "hard_gate_rejected": hard_gate_rejected,
         "keyword_detected": keyword_matches,
         "profile_keywords_added": profile_keyword_count,
         "timings": timings,
@@ -558,13 +850,29 @@ def run_pipeline(
         "pages_filtered": len(not_relevant),
     }
 
-    # ---- post-processing: upsert + cross-references ----
-    print("\n--- Post-processing ---")
-    merged = upsert_results(existing_results, new_results)
-    compute_cross_references(merged)
+    # ---- post-processing: dedup + upsert + cross-references ----
+    original_count = len(new_results)
+    new_results = dedup_by_benefit_name(new_results)
+    dropped = original_count - len(new_results)
 
-    ref_count = sum(len(r.cross_references) for r in merged)
-    print(f"  {len(merged)} total result(s), {ref_count} cross-reference(s)")
+    if dropped:
+        print("\n--- Dedup ---")
+        print(f"  Capped: {dropped} match(es) dropped by benefit_name dedup (cap: 3 per name)")
+
+    print("\n--- Post-processing ---")
+    all_results = upsert_results(existing_results, new_results)
+    all_results = normalize_output_matches(all_results)
+    sanitize_match_text_fields(all_results)
+    all_results.sort(
+        key=lambda r: (
+            r.evidence_type == "keyword-detection",
+            -r.relevance_score,
+        )
+    )
+    compute_cross_references(all_results)
+
+    ref_count = sum(len(r.cross_references) for r in all_results)
+    print(f"  {len(all_results)} total result(s), {ref_count} cross-reference(s)")
 
     # ---- save final results ----
     envelope = MatchResultsEnvelope(
@@ -575,8 +883,8 @@ def run_pipeline(
             items_total=len(relevant),
             started_at=state.started_at,
         ),
-        results=merged,
-        result_count=len(merged),
+        results=all_results,
+        result_count=len(all_results),
     )
     save_results(envelope, results_path)
 
@@ -587,7 +895,8 @@ def run_pipeline(
     save_state(state, state_path)
 
     print("\n=== Pipeline Complete ===")
-    print(f"Results: {len(merged)}")
+    print(f"Results: {len(all_results)}")
     print(f"Output: {results_path}")
 
     return envelope, stats
+
