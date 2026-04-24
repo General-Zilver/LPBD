@@ -60,21 +60,69 @@ BENEFIT_KEYWORDS = {
     },
 }
 
-SINGLE_WORD_PATTERNS = {
-    keyword: re.compile(rf"\b{re.escape(keyword)}\b")
-    for keywords in BENEFIT_KEYWORDS.values()
-    for keyword in keywords
-    if " " not in keyword and "-" not in keyword and "/" not in keyword
-}
+def _build_single_word_patterns(keyword_map):
+    return {
+        keyword: re.compile(rf"\b{re.escape(keyword)}\b")
+        for keywords in keyword_map.values()
+        for keyword in keywords
+        if " " not in keyword and "-" not in keyword and "/" not in keyword
+    }
+
+
+BASE_SINGLE_WORD_PATTERNS = _build_single_word_patterns(BENEFIT_KEYWORDS)
 
 
 def _normalize_text(text):
     return " ".join((text or "").lower().split())
 
 
-def _keyword_present(normalized_text, keyword):
-    if keyword in SINGLE_WORD_PATTERNS:
-        return SINGLE_WORD_PATTERNS[keyword].search(normalized_text) is not None
+def _normalize_keyword(keyword):
+    return " ".join(str(keyword or "").lower().split())
+
+
+def _normalize_extra_keywords(extra_keywords):
+    normalized = {}
+    if not isinstance(extra_keywords, dict):
+        return normalized
+
+    for category, keywords in extra_keywords.items():
+        cat = _normalize_keyword(category)
+        if not cat:
+            continue
+
+        values = []
+        if isinstance(keywords, str):
+            values = [keywords]
+        elif isinstance(keywords, (list, tuple, set)):
+            values = list(keywords)
+        else:
+            continue
+
+        bucket = set()
+        for kw in values:
+            clean = _normalize_keyword(kw)
+            if not clean:
+                continue
+            if len(clean) < 3 or len(clean) > 80:
+                continue
+            bucket.add(clean)
+
+        if bucket:
+            normalized[cat] = bucket
+
+    return normalized
+
+
+def _merge_keyword_maps(extra_keywords=None):
+    merged = {category: set(keywords) for category, keywords in BENEFIT_KEYWORDS.items()}
+    for category, keywords in _normalize_extra_keywords(extra_keywords).items():
+        merged.setdefault(category, set()).update(keywords)
+    return merged
+
+
+def _keyword_present(normalized_text, keyword, single_word_patterns):
+    if keyword in single_word_patterns:
+        return single_word_patterns[keyword].search(normalized_text) is not None
     return keyword in normalized_text
 
 
@@ -90,14 +138,21 @@ def _is_custom_domain(url):
 
 
 # Returns {category: [matched_keywords]}.
-def detect_benefit_keywords(page_text):
+def detect_benefit_keywords(page_text, keyword_map=None, single_word_patterns=None):
     normalized = _normalize_text(page_text)
     if not normalized:
         return {}
 
+    keyword_map = keyword_map or BENEFIT_KEYWORDS
+    single_word_patterns = single_word_patterns or BASE_SINGLE_WORD_PATTERNS
+
     matched = {}
-    for category, keywords in BENEFIT_KEYWORDS.items():
-        hits = [kw for kw in sorted(keywords) if _keyword_present(normalized, kw)]
+    for category, keywords in keyword_map.items():
+        hits = [
+            kw
+            for kw in sorted(keywords)
+            if _keyword_present(normalized, kw, single_word_patterns)
+        ]
         if hits:
             matched[category] = hits
     return matched
@@ -106,17 +161,24 @@ def detect_benefit_keywords(page_text):
 # Main entry point for keyword pre-filtering.
 # scraped_lookup format: {url: (title, text)}
 # Returns (relevant, not_relevant), both lists of page-entry dicts.
-def filter_pages(scraped_lookup):
+def filter_pages(scraped_lookup, extra_keywords=None):
     if not scraped_lookup:
         print("  No scraped pages found.")
         return [], []
+
+    keyword_map = _merge_keyword_maps(extra_keywords=extra_keywords)
+    single_word_patterns = _build_single_word_patterns(keyword_map)
 
     relevant = []
     not_relevant = []
     custom_bypassed = 0
 
     for url, (title, text) in scraped_lookup.items():
-        matches = detect_benefit_keywords(text)
+        matches = detect_benefit_keywords(
+            text,
+            keyword_map=keyword_map,
+            single_word_patterns=single_word_patterns,
+        )
         categories = sorted(matches.keys())
         keyword_hits = sorted({kw for kws in matches.values() for kw in kws})
 
@@ -146,6 +208,12 @@ def filter_pages(scraped_lookup):
         f"  Keyword pre-filter: {len(relevant)} relevant, "
         f"{len(not_relevant)} filtered out."
     )
+    if extra_keywords:
+        derived_count = sum(
+            len(keywords) for keywords in _normalize_extra_keywords(extra_keywords).values()
+        )
+        if derived_count:
+            print(f"  Added {derived_count} profile-derived keyword(s) to filter.")
     if custom_bypassed:
         print(f"  {custom_bypassed} custom page(s) bypassed keyword gate.")
 

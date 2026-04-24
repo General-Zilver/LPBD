@@ -42,7 +42,17 @@ def load_user_answers(username):
 
 # Runs the full matching pipeline: keyword filter -> match.
 # This is what match.py calls. Returns the results envelope.
-def run_matching_pipeline(user, model=None, delay=5, scraped_dir=None, output=None):
+def run_matching_pipeline(
+    user,
+    model=None,
+    delay=5,
+    scraped_dir=None,
+    output=None,
+    verify_pass2=True,
+    low_priority=False,
+    num_threads=None,
+    profile_keywords=True,
+):
     answers = load_user_answers(user)
     if not answers:
         raise ValueError(
@@ -64,6 +74,10 @@ def run_matching_pipeline(user, model=None, delay=5, scraped_dir=None, output=No
         state_path=DEFAULT_STATE,
         model=model,
         delay=delay,
+        verify_pass2=verify_pass2,
+        low_priority=low_priority,
+        num_threads=num_threads,
+        use_profile_keywords=profile_keywords,
     )
     return envelope
 
@@ -71,7 +85,7 @@ def run_matching_pipeline(user, model=None, delay=5, scraped_dir=None, output=No
 # Matches a single URL immediately without the full pipeline.
 # Fetches -> embeds (nomic) -> matches (phi3) -> saves results.
 # Returns a list of MatchResult objects.
-def run_single_page(user, url, model="phi3:mini"):
+def run_single_page(user, url, model=None):
     answers = load_user_answers(user)
     if not answers:
         raise ValueError(
@@ -79,12 +93,14 @@ def run_single_page(user, url, model="phi3:mini"):
             "Complete the questionnaire in the GUI first."
         )
 
+    import ollama_client as _oc
+
     return match_and_save(
         url=url,
         answers=answers,
         results_path=DEFAULT_RESULTS,
         embeddings_path=DEFAULT_EMBEDDINGS,
-        model=model,
+        model=model or _oc.DEFAULT_MODEL,
     )
 
 

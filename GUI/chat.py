@@ -5,6 +5,7 @@ import threading
 import json
 import sys
 from pathlib import Path
+import subprocess
 
 # Add project root so we can import ollama_client
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -32,30 +33,36 @@ class ChatPage(ctk.CTkFrame):
 
     # Loads answers.json to give the LLM the student's profile info
     def _load_answers(self):
+        user = self.controller.session.get("username")
+
         candidates = [
             Path(__file__).resolve().parent.parent / "answers.json",
             Path(__file__).resolve().parent / "answers.json",
         ]
+
         for path in candidates:
             if path.exists():
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    if not data:
+
+                    if not data or user not in data:
                         continue
-                    # answers.json is {username: {question: {section: answer}}}
-                    # grab the first (or current) user's answers
-                    username = next(iter(data))
-                    answers = data[username]
+
+                    answers = data[user]
+
                     lines = []
                     for question, section_map in answers.items():
                         for section, answer in section_map.items():
                             if answer:
                                 lines.append(f"- {question} {answer}")
+
                     if lines:
                         return "\n".join(lines)
+
                 except Exception:
                     pass
+
         return None
 
     # Loads matched_benefits.json to give the LLM context about the user's benefits
@@ -157,7 +164,7 @@ class ChatPage(ctk.CTkFrame):
         input_frame = ctk.CTkFrame(self, height=70)
         input_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
 
-        input_frame.grid_columnconfigure(1, weight=1)
+        input_frame.grid_columnconfigure(4, weight=1)
 
         upload_btn = ctk.CTkButton(
             input_frame,
@@ -166,14 +173,14 @@ class ChatPage(ctk.CTkFrame):
             command=self.upload_file
         )
 
-        upload_btn.grid(row=0, column=0, padx=(10, 5), pady=10)
+        upload_btn.grid(row=0, column=3, padx=(5, 5), pady=10)
 
         self.message_entry = ctk.CTkEntry(
             input_frame,
             placeholder_text="Type your message here..."
         )
 
-        self.message_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=10)
+        self.message_entry.grid(row=0, column=4, sticky="ew", padx=5, pady=10)
 
         self.message_entry.bind("<Return>", self.send_message)
 
@@ -183,8 +190,41 @@ class ChatPage(ctk.CTkFrame):
             width=100,
             command=self.send_message
         )
+        # MAP (Green)
+        map_btn = ctk.CTkButton(
+            input_frame,
+            text="Map",
+            width=80,
+            fg_color="green",
+            hover_color="#006400",
+            command=self.run_map
+        )
+        map_btn.grid(row=0, column=0, padx=5, pady=10)
 
-        send_btn.grid(row=0, column=2, padx=(5, 10), pady=10)
+        # SCRAPE (Yellow)
+        scrape_btn = ctk.CTkButton(
+            input_frame,
+            text="Scrape",
+            width=80,
+            fg_color="#FFD700",
+            text_color="black",
+            hover_color="#E6C200",
+            command=self.run_scrape
+        )
+        scrape_btn.grid(row=0, column=1, padx=5, pady=10)
+
+        # MATCH (Purple)
+        match_btn = ctk.CTkButton(
+            input_frame,
+            text="Match",
+            width=80,
+            fg_color="#800080",
+            hover_color="#5A005A",
+            command=self.run_match
+        )
+        match_btn.grid(row=0, column=2, padx=5, pady=10)
+
+        send_btn.grid(row=0, column=5, padx=(5, 10), pady=10)
 
     # Sends the user's message and kicks off an Ollama call in a background thread
     def send_message(self, event=None):
@@ -220,7 +260,8 @@ class ChatPage(ctk.CTkFrame):
 
             reply = ollama_client.chat(messages)
             self.conversation.append({"role": "assistant", "content": reply})
-            self.after(0, lambda: self._show_reply(reply))
+            if self.winfo_exists():
+                self.after(0, lambda: self._show_reply(reply))
         except ConnectionError:
             self.after(0, lambda: self._show_reply(
                 "Ollama is not running. Please start it and make sure phi3:mini is pulled:\n"
@@ -231,13 +272,17 @@ class ChatPage(ctk.CTkFrame):
 
     # Updates the UI with the LLM response (replaces the "Thinking..." bubble)
     def _show_reply(self, text):
-        self.sending = False
-        # Remove the "Thinking..." bubble (last widget in chat_frame)
-        children = self.chat_frame.winfo_children()
-        if children:
-            children[-1].destroy()
-        self.add_message(text, sender="system")
-
+        if not self.winfo_exists():
+            return
+        try:
+            self.sending = False
+            # Remove the "Thinking..." bubble (last widget in chat_frame)
+            children = self.chat_frame.winfo_children()
+            if children:
+                children[-1].destroy()
+            self.add_message(text, sender="system")
+        except:
+            pass
     # -----------------------
     # File Upload
     # -----------------------
@@ -248,3 +293,23 @@ class ChatPage(ctk.CTkFrame):
 
         if file_path:
             self.add_message(f"Uploaded file:\n{file_path}", sender="system")
+
+    def run_map(self):
+        self.add_message("Running map.py...", sender="system")
+        threading.Thread(target=lambda: subprocess.run(["python", "map.py"]), daemon=True).start()
+
+    def run_scrape(self):
+        self.add_message("Running scrape_all.py...", sender="system")
+        threading.Thread(target=lambda: subprocess.run(["python", "scrape_all.py"]), daemon=True).start()
+
+    def run_match(self):
+        user = self.controller.session.get("username", "default_user")
+
+        self.add_message(f"Running match_it.py for user: {user}", sender="system")
+
+        threading.Thread(
+            target=lambda: subprocess.run(
+                ["python", "match_it.py", "--user", user]
+            ),
+            daemon=True
+        ).start()

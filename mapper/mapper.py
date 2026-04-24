@@ -22,6 +22,149 @@ SKIP_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip",
 }
 
+# Path fragments that indicate junk pages (login, admin, portals, etc.).
+# Case-insensitive check against the URL path. Easy to extend — just add a string.
+EXCLUDED_PATH_FRAGMENTS = [
+    "/login", "/signin", "/sign-in", "/log-in",
+    "/account", "/forgot", "/forgotpassword", "/password",
+    "/systemcheck", "/shibboleth",
+    "/wp-admin", "/wp-login",
+    "/pre_apply", "/print_preview", "/bookmarks",
+    "/user/forgot", "/user/edit",
+    # Calendar and event infrastructure that generates thousands of per-day pages.
+    "/event/", "/events/", "/venue/", "/venues/",
+    "/group/", "/groups/",
+    "/photo/", "/photos/",
+    "/calendar/", "/calendar",
+    "/category/", "/tag/",
+    # Old catalog archives that bloat the crawl with outdated content.
+    "/archive/", "/archive",
+]
+
+# Entire subdomains to skip (portals, admin panels, etc.).
+EXCLUDED_SUBDOMAINS = [
+    "my.utrgv.edu",
+    # Auth-walled portals where every page is empty or login-gated.
+    "brightspace.utrgv.edu",
+    "careers.utrgv.edu",
+    "assist.utrgv.edu",
+    # Dedicated calendar/event subdomains that produce per-day noise.
+    "calendar.utrgv.edu",
+    "events.southtexascollege.edu",
+]
+
+# Likely benefit-related paths to seed into BFS so we hit relevant content fast
+# on large domains. Pages that don't exist (404) fail fast and get skipped.
+# Easy to extend — just add a string.
+BENEFIT_HUB_PATHS = [
+    "/admissions",
+    "/financial-aid",
+    "/cost-and-aid",
+    "/scholarships",
+    "/student-services",
+    "/student-life",
+    "/counseling",
+    "/health",
+    "/health-services",
+    "/wellness",
+    "/disability",
+    "/accessibility",
+    "/veterans",
+    "/veteran-services",
+    "/tuition",
+    "/aid",
+    "/benefits",
+    "/support",
+    "/resources",
+    "/students",
+    "/current-students",
+    "/student-affairs",
+    "/student-support",
+    "/basic-needs",
+    "/food-pantry",
+    "/emergency-aid",
+    "/financial-wellness",
+    "/care-team",
+    "/case-management",
+    "/international-students",
+    "/undocumented-students",
+    "/transfer",
+    "/registrar",
+]
+
+# ISO 639-1 two-letter language codes used to detect translated portal duplicates
+# like /es/financial-aid or /zh-hans/page. We keep the original English page and
+# drop the translated variant.
+_LANG_CODES = {
+    "aa", "ab", "af", "ak", "am", "an", "ar", "as", "av", "ay", "az",
+    "ba", "be", "bg", "bh", "bi", "bm", "bn", "bo", "br", "bs",
+    "ca", "ce", "ch", "co", "cr", "cs", "cu", "cv", "cy",
+    "da", "de", "dv", "dz",
+    "ee", "el", "eo", "es", "et", "eu",
+    "fa", "ff", "fi", "fj", "fo", "fr", "fy",
+    "ga", "gd", "gl", "gn", "gu", "gv",
+    "ha", "he", "hi", "ho", "hr", "ht", "hu", "hy", "hz",
+    "ia", "id", "ie", "ig", "ii", "ik", "io", "is", "it", "iu",
+    "ja", "jv",
+    "ka", "kg", "ki", "kj", "kk", "kl", "km", "kn", "ko", "kr", "ks", "ku", "kv", "kw", "ky",
+    "la", "lb", "lg", "li", "ln", "lo", "lt", "lu", "lv",
+    "mg", "mh", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my",
+    "na", "nb", "nd", "ne", "ng", "nl", "nn", "no", "nr", "nv", "ny",
+    "oc", "oj", "om", "or", "os",
+    "pa", "pi", "pl", "ps", "pt",
+    "qu",
+    "rm", "rn", "ro", "ru", "rw",
+    "sa", "sc", "sd", "se", "sg", "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw",
+    "ta", "te", "tg", "th", "ti", "tk", "tl", "tn", "to", "tr", "ts", "tt", "tw", "ty",
+    "ug", "uk", "ur", "uz",
+    "ve", "vi", "vo",
+    "wa", "wo",
+    "xh",
+    "yi", "yo",
+    "za", "zh", "zu",
+}
+
+
+# Checks if a single URL should be excluded from the mapped output.
+def _is_excluded_url(url):
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+
+    # Whole subdomain exclusion
+    for sub in EXCLUDED_SUBDOMAINS:
+        if host == sub or host.endswith("." + sub):
+            return True
+
+    # Path fragment exclusion
+    for frag in EXCLUDED_PATH_FRAGMENTS:
+        if frag in path:
+            return True
+
+    # Translated portal duplicate: path starts with /xx/ or /xx-yy/ where xx is a lang code
+    parts = path.strip("/").split("/")
+    if parts:
+        first = parts[0]
+        # Match "es", "zh-hans", "pt-br", etc.
+        lang_base = first.split("-")[0]
+        if lang_base in _LANG_CODES and len(parts) > 1:
+            return True
+
+    return False
+
+
+# Filters a set of URLs, removing excluded ones. Returns (kept, excluded_count).
+def filter_urls(urls):
+    kept = set()
+    excluded = 0
+    for url in urls:
+        if _is_excluded_url(url):
+            excluded += 1
+        else:
+            kept.add(url)
+    return kept, excluded
+
+
 OUTPUT_FILE = Path(__file__).resolve().parent / "mapped_pages.json"
 
 
@@ -77,7 +220,8 @@ def clean_and_join(base_url, href):
     if parsed.scheme not in {"http", "https"}:
         return None
 
-    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    # Normalize http to https so we don't discover both variants of the same page.
+    clean_url = f"https://{parsed.netloc}{parsed.path}"
     lower_path = parsed.path.lower()
     if any(lower_path.endswith(ext) for ext in SKIP_EXTENSIONS):
         return None
@@ -178,22 +322,50 @@ def fetch_sitemap_urls(base_url, session=None, include_subdomains=True):
 
 
 # Crawls a domain starting from the homepage using breadth-first search.
-# Sitemap URLs go into `results` (discovered for free) but NOT into `visited`, so BFS
-# can still reach them organically to extract their outgoing links and find pages the
-# sitemap missed. Stops when the queue is empty or we hit the max page limit.
-# Waits between requests so we don't hammer the server.
+# Pre-seeds the queue with likely benefit hub paths so BFS finds relevant content
+# quickly on large domains. Sitemap URLs go into `results` (discovered for free) but
+# NOT into `visited`, so BFS can still reach them organically. Excluded URLs are
+# filtered out during BFS so max_pages doesn't get wasted on junk. Tracks a `queued`
+# set alongside `visited` so each URL is enqueued exactly once (nav bars and footers
+# repeat the same links on every page).
 def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
-              max_pages=500, delay=0.3):
+              max_pages=None, delay=0.3):
     session = session or _build_session()
-    results = set(preseed or set())   # sitemap URLs count as discovered already
-    visited = set()                   # tracks what we've actually fetched
-    queue = deque([base_url])         # always start from the homepage
-    pages_fetched = 0
 
-    while queue and pages_fetched < max_pages:
+    # Preseed (sitemap URLs) should already be filtered by map_domain before
+    # reaching here, so we accept them directly.
+    results = set(preseed or set())
+
+    visited = set()                   # URLs we've fetched
+    queued = set()                    # URLs ever added to queue (prevents re-enqueue)
+    queue = deque()
+
+    # If the homepage itself is excluded (e.g. entire subdomain blocked), abort early.
+    if _is_excluded_url(base_url):
+        print(f"   Homepage {base_url} is excluded. Skipping BFS.")
+        return results, 0
+
+    queue.append(base_url)
+    queued.add(base_url)
+
+    # Seed benefit hub URLs alongside the homepage. Pages that don't exist (404)
+    # fail fast and get skipped. Pages that do exist give BFS a huge head start.
+    base_clean = base_url.rstrip("/")
+    for path in BENEFIT_HUB_PATHS:
+        hub_url = base_clean + path
+        if hub_url not in queued:
+            queue.append(hub_url)
+            queued.add(hub_url)
+
+    pages_fetched = 0
+    links_kept = 0
+    links_excluded = 0
+    domain_label = urlparse(base_url).netloc.replace("www.", "")
+
+    while queue and (max_pages is None or pages_fetched < max_pages):
         current_url = queue.popleft()
 
-        # Don't fetch the same page twice, but a sitemap URL we haven't fetched yet is fair game.
+        # Don't fetch the same page twice.
         if current_url in visited:
             continue
         visited.add(current_url)
@@ -207,14 +379,29 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
         pages_fetched += 1
         results.add(current_url)
 
+        # Progress log every 25 pages so long crawls don't look hung.
+        if pages_fetched % 25 == 0:
+            short_path = (urlparse(current_url).path or "/")[:40]
+            print(f"   [{domain_label}] Crawled {pages_fetched} | "
+                  f"Queue: {len(queue)} | Kept: {links_kept} | "
+                  f"Excluded: {links_excluded} | Current: {short_path}")
+
         new_links = extract_same_domain_links(
             base_url, resp.text, include_subdomains=include_subdomains
         )
 
         for link in new_links:
-            if link not in visited:
-                results.add(link)
-                queue.append(link)
+            # Skip if already fetched or already in queue.
+            if link in visited or link in queued:
+                continue
+            # Pre-filter junk so it never enters the queue or counts toward max_pages.
+            if _is_excluded_url(link):
+                links_excluded += 1
+                continue
+            results.add(link)
+            queue.append(link)
+            queued.add(link)
+            links_kept += 1
 
         if delay > 0:
             time.sleep(delay)
@@ -225,17 +412,24 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
 # Runs the full discovery pipeline for a single domain. First tries the sitemap to get
 # a head start for free, then BFS crawls from the homepage to find anything the sitemap
 # missed. Returns everything we found in one result dict.
-def map_domain(url, include_subdomains=True, max_pages=500, delay=0.3):
+def map_domain(url, include_subdomains=True, max_pages=None, delay=0.3):
     print(f"Mapping {url}...")
     session = _build_session()
 
     try:
         # Step 1: Try to grab the sitemap for a free head start.
-        sitemap_urls = fetch_sitemap_urls(url, session=session, include_subdomains=include_subdomains)
+        sitemap_urls_raw = fetch_sitemap_urls(url, session=session, include_subdomains=include_subdomains)
+        sitemap_raw_count = len(sitemap_urls_raw)
+
+        # Filter junk from sitemap URLs before passing to BFS.
+        sitemap_urls, sitemap_filtered = filter_urls(sitemap_urls_raw)
         sitemap_count = len(sitemap_urls)
 
-        if sitemap_urls:
-            print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs.")
+        if sitemap_raw_count:
+            if sitemap_filtered:
+                print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs ({sitemap_filtered} filtered out).")
+            else:
+                print(f"   Sitemap found. Pre-seeded {sitemap_count} URLs.")
         else:
             print("   No sitemap found. BFS will do all discovery.")
 
@@ -253,6 +447,11 @@ def map_domain(url, include_subdomains=True, max_pages=500, delay=0.3):
         crawl_found = len(all_urls) - sitemap_count
         print(f"   BFS fetched {pages_fetched} pages, discovered {crawl_found} additional URLs.")
 
+        # Safety net: catch any excluded URLs that slipped through via preseed.
+        all_urls, excluded_count = filter_urls(all_urls)
+        if excluded_count:
+            print(f"   Filtered out {excluded_count} sitemap URL(s).")
+
         return {
             "status": "success",
             "domain": url,
@@ -260,6 +459,7 @@ def map_domain(url, include_subdomains=True, max_pages=500, delay=0.3):
             "sitemap_count": sitemap_count,
             "crawl_pages_fetched": pages_fetched,
             "crawl_additional": crawl_found,
+            "filtered_out": excluded_count,
             "found_count": len(all_urls),
             "urls": sorted(all_urls),
         }
@@ -368,7 +568,7 @@ def upsert_domain_result(result, output_path=OUTPUT_FILE):
 # Maps a list of domains, optionally in parallel, and writes each result to the output file
 # as soon as it finishes. Falls back to one-at-a-time if there's only one domain.
 def map_domains_batch(domains, include_subdomains=True, workers=1,
-                      max_pages=500, delay=0.3, output_path=OUTPUT_FILE):
+                      max_pages=None, delay=0.3, output_path=OUTPUT_FILE):
 
     workers = max(1, min(workers, len(domains)))
 
@@ -431,8 +631,8 @@ def _parse_args():
     parser.add_argument(
         "--max-pages",
         type=int,
-        default=500,
-        help="Max pages to fetch per domain during BFS (default: 500).",
+        default=None,
+        help="Max pages to fetch per domain during BFS (default: unlimited).",
     )
     parser.add_argument(
         "--delay",

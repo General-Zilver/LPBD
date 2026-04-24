@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 from typing import Any, Dict, List, Tuple
 
@@ -17,11 +18,46 @@ from .pack_store import (
 )
 
 
+# Site-chrome class/id patterns. If any token in a class list or the id
+# contains one of these substrings (case-insensitive), the element is stripped.
+_SITE_CHROME_PATTERNS = [
+    "nav", "navigation", "navbar", "menu", "footer", "sidebar",
+    "breadcrumb", "skip-link", "skiplink", "site-header",
+    "global-header", "masthead",
+]
+
+
 # Normalize HTML into stable plain text so hash comparisons are reliable.
+# Strips site chrome (nav, footer, sidebar, etc.) at the DOM level before
+# extracting text so downstream stages get clean content.
 def _normalize_text(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
-    for tag in soup(["script", "style", "noscript"]):
+
+    # Remove tags that never contain useful content
+    for tag in soup(["script", "style", "noscript", "nav", "footer", "aside"]):
         tag.decompose()
+
+    # Remove elements whose class or id matches site-chrome patterns
+    for el in soup.find_all(True):
+        # Skip headings so we never accidentally strip page titles
+        if el.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            continue
+
+        cls = el.get("class")
+        if cls is not None:
+            if isinstance(cls, str):
+                cls = [cls]
+            cls_lower = " ".join(c.lower() for c in cls)
+            if any(p in cls_lower for p in _SITE_CHROME_PATTERNS):
+                el.decompose()
+                continue
+
+        el_id = el.get("id")
+        if el_id is not None:
+            id_lower = el_id.lower()
+            if any(p in id_lower for p in _SITE_CHROME_PATTERNS):
+                el.decompose()
+
     return " ".join(soup.get_text(" ", strip=True).split())
 
 
@@ -36,6 +72,74 @@ def _page_title(html_text: str) -> str:
 # Shared SHA-256 helper used for page-level and pack-level fingerprints.
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+
+MIN_CONTENT_LENGTH = 50
+
+# Phrases that indicate login, auth, or utility pages. Case-insensitive.
+# Easy to extend — just add a string.
+AUTH_UTILITY_SIGNALS = [
+    "sign in",
+    "log in",
+    "login",
+    "forgot your password",
+    "forgot password",
+    "authentication failed",
+    "account password warning",
+    "system check",
+    "shibboleth",
+    "wp-admin",
+    "wp-login",
+    "access denied",
+    "session expired",
+    "session timed out",
+    "unauthorized",
+    "permission denied",
+    "please authenticate",
+]
+
+# Titles that indicate error pages, login walls, or other junk.
+JUNK_TITLE_SIGNALS = [
+    "page not found",
+    "not found",
+    "access denied",
+    "sign in",
+    "log in",
+    "login required",
+    "session expired",
+]
+
+_JUNK_TITLE_PATTERN = re.compile(
+    "|".join(re.escape(s) for s in JUNK_TITLE_SIGNALS),
+    re.IGNORECASE,
+)
+
+# Matches "404" as a standalone token, not embedded in longer numbers.
+_404_PATTERN = re.compile(r"\b404\b")
+
+_AUTH_PATTERN = re.compile(
+    "|".join(re.escape(s) for s in AUTH_UTILITY_SIGNALS),
+    re.IGNORECASE,
+)
+
+
+# Returns a rejection reason if the page is empty or login/auth junk, else None.
+def _content_quality_check(url, title, normalized_text):
+    if len(normalized_text.strip()) < MIN_CONTENT_LENGTH:
+        return "empty normalized text"
+
+    # Reject pages whose title matches known junk patterns.
+    match = _JUNK_TITLE_PATTERN.search(title)
+    if match:
+        return f"junk title: {match.group().lower()}"
+    if _404_PATTERN.search(title):
+        return "junk title: 404"
+
+    combined = f"{url} {title} {normalized_text[:500]}"
+    if _AUTH_PATTERN.search(combined):
+        return "auth or utility page"
+
+    return None
 
 
 # Build conditional request headers from merged metadata/client validators.
@@ -90,6 +194,7 @@ def get_or_build_pack(
     unchanged_urls: List[str] = []
     errors: List[Dict[str, str]] = []
     pack_pages: List[Dict[str, Any]] = []
+    seen_hashes_this_run: set = set()
     should_save_pack = not client_has_pack
 
     try:
@@ -145,7 +250,19 @@ def get_or_build_pack(
 
             title = _page_title(response.text)
             normalized_text = _normalize_text(response.text)
+
+            reject_reason = _content_quality_check(url, title, normalized_text)
+            if reject_reason:
+                errors.append({"url": url, "error": reject_reason})
+                continue
+
             text_hash = _sha256(normalized_text)
+
+            if text_hash in seen_hashes_this_run:
+                errors.append({"url": url, "error": "duplicate content (same hash as earlier page)"})
+                continue
+            seen_hashes_this_run.add(text_hash)
+
             fetched_at = time.time()
 
             prior_text_hash = merged.get("text_hash")

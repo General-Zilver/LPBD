@@ -32,6 +32,20 @@ class SettingsOverlay(ctk.CTkFrame):
                 text="Update Form",
                 command=self.open_update_form
             ).pack(pady=10, padx=20, anchor="w")
+            
+            ctk.CTkButton(
+                self,
+                text="Home",
+                command=self.go_home
+            ).pack(pady=10, padx=20, anchor="w")
+
+        ctk.CTkButton(
+            self,
+            text="Close App",
+            fg_color="#8B0000",  # dark red
+            hover_color="#5A0000",
+            command=self.close_app
+        ).pack(pady=10, padx=20, anchor="w")
 
         # Spacer
         ctk.CTkLabel(self, text="").pack(expand=True)
@@ -73,19 +87,20 @@ class SettingsOverlay(ctk.CTkFrame):
 
     def open_update_form(self):
         from question import QuestionPage
-        # create QuestionPage if it doesn't exist yet
-        if self.question_page is None:
-            selected_options = list(self.user_answers.keys())
 
-            # fallback if answers.json is empty
-            if not selected_options:
-                selected_options = []
+        # Always create a fresh QuestionPage to avoid stale widget references
+        if self.question_page is not None:
+            try:
+                self.question_page.destroy()
+            except Exception:
+                pass
 
-            self.question_page = QuestionPage(
-                self.parent,
-                self.controller,
-                selected_options
-            )
+        selected_options = list(self.user_answers.keys()) or []
+        self.question_page = QuestionPage(
+            self.parent,
+            self.controller,
+            selected_options
+        )
         self.destroy_overlay()
 
         if self.controller.current_page:
@@ -106,95 +121,143 @@ class SettingsOverlay(ctk.CTkFrame):
         if self.question_page:
             self.question_page.pack(fill="both", expand=True)
 
+    def close_app(self):
+        try:
+            # Optional: save anything here before exit
+            print("Closing app gracefully...")
+
+            root = self.winfo_toplevel()
+
+            # Proper Tkinter shutdown sequence
+            root.quit()      # stop mainloop
+            root.destroy()   # destroy all widgets
+
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+    def go_home(self):
+        # Close overlay first
+        self.destroy_overlay()
+
+        # Destroy current page if it exists
+        if getattr(self.controller, "current_page", None):
+            try:
+                self.controller.current_page.destroy()
+            except Exception:
+                pass
+
+        # Go back to chat page
+        self.controller.show_page("chat")
+
 
 class UpdatePage(ctk.CTkFrame):
     def __init__(self, parent, controller, question_page, user_answers):
         super().__init__(parent)
+
         self.controller = controller
         self.question_page = question_page
         self.user_answers = user_answers
-        #self.close_callback = close_callback
 
-        self.pack(fill="both", expand=True)
+        self.create_top_bar()
+        self.create_scroll_area()
 
-        # Scrollable Canvas
-        canvas = ctk.CTkCanvas(self, bg="#444444", highlightthickness=0)
-        canvas.pack(side="left", fill="both", expand=True)
+    # -----------------------
+    # TOP BAR (matches ChatPage)
+    # -----------------------
+    def create_top_bar(self):
 
-        scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=canvas.yview)
-        scrollbar.pack(side="right", fill="y")
+        top_bar = ctk.CTkFrame(self, height=60)
+        top_bar.pack(fill="x")
 
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        self.inner_frame = ctk.CTkFrame(canvas, fg_color="#444444", corner_radius=0)
-        canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
-
-        self.inner_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-
-        # Page Title
         ctk.CTkLabel(
-            self.inner_frame,
+            top_bar,
+            text="Student Benefit Analyzer",
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(side="left", padx=20, pady=15)
+
+        ctk.CTkButton(
+            top_bar,
+            text="Settings",
+            command=self.open_settings
+        ).pack(side="right", padx=20, pady=15)
+
+    def open_settings(self):
+        SettingsOverlay(self.master, self.controller)
+
+    # -----------------------
+    # SCROLL AREA (NO CANVAS)
+    # -----------------------
+    def create_scroll_area(self):
+
+        self.scroll_frame = ctk.CTkScrollableFrame(self)
+        self.scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Title
+        ctk.CTkLabel(
+            self.scroll_frame,
             text="Update Form",
             font=ctk.CTkFont(size=24, weight="bold")
         ).pack(pady=20)
 
         # Sections
         for section_name, questions in self.question_page.questions.items():
-            frame = ctk.CTkFrame(self.inner_frame, fg_color="#444444", corner_radius=0)
-            frame.pack(padx=20, pady=10, fill="x")
+
+            section_box = ctk.CTkFrame(self.scroll_frame, corner_radius=10)
+            section_box.pack(fill="x", pady=10)
 
             ctk.CTkLabel(
-                frame,
+                section_box,
                 text=section_name,
                 font=ctk.CTkFont(size=18, weight="bold")
-            ).pack(anchor="w", padx=10, pady=(10,5))
+            ).pack(anchor="w", padx=15, pady=(10, 5))
 
             ctk.CTkButton(
-                frame,
+                section_box,
                 text="Start Section",
+                fg_color="#2B7FFF",
                 command=lambda s=section_name: self.start_section(s)
             ).pack(anchor="w", padx=15, pady=5)
 
             dropdown = ctk.CTkOptionMenu(
-                frame,
+                section_box,
                 values=questions,
                 command=lambda q, s=section_name: self.start_from_question(s, q)
             )
-            dropdown.pack(anchor="w", padx=15, pady=(5,10))
+            dropdown.pack(anchor="w", padx=15, pady=(5, 10))
 
-        # Back button at bottom
-        ctk.CTkButton(
-            self.inner_frame,
-            text="Back",
-            fg_color="gray",
-            command=lambda: self.controller.show_page("chat")
-        ).pack(pady=20)
+        # Bottom spacing
+        ctk.CTkLabel(self.scroll_frame, text="").pack(pady=10)
+
+    # -----------------------
+    # LOGIC (unchanged)
+    # -----------------------
 
     def start_section(self, section):
         qp = self.question_page
+
         qp.selected_options = [section]
         qp.current_step = 1
         qp.current_question_index = 0
 
         qp.update_mode = False
+        qp.section_update_mode = True
         qp.target_question = None
 
         qp.refresh_current_question()
 
-        # Refresh UI correctly
         if hasattr(qp, "get_current_question") and hasattr(qp, "update_progress"):
             qp.question_label.configure(text=qp.get_current_question())
             qp.update_progress()
-            if hasattr(qp, "answer_frame"):
-                for widget in qp.answer_frame.winfo_children():
-                    widget.destroy()  # remove old buttons/options
-            if hasattr(qp, "render_current_answers"):
-                qp.render_current_answers()  # call method that draws buttons/options
-            # fallback if render_current_answers doesn’t exist
-            elif hasattr(qp, "create_answer_buttons"):
-                qp.create_answer_buttons()
 
-        self.pack_forget()
+        if hasattr(qp, "answer_frame"):
+            for widget in qp.answer_frame.winfo_children():
+                widget.destroy()
+
+        if hasattr(qp, "render_current_answers"):
+            qp.render_current_answers()
+        elif hasattr(qp, "create_answer_buttons"):
+            qp.create_answer_buttons()
+
+        self.destroy()
         qp.pack(fill="both", expand=True)
         self.controller.current_page = qp
 
@@ -205,12 +268,12 @@ class UpdatePage(ctk.CTkFrame):
         qp.current_step = 1
         qp.current_question_index = qp.questions[section].index(question)
 
-        # Enable single question update mode
         qp.update_mode = True
+        qp.section_update_mode = False
         qp.target_question = question
 
         qp.refresh_current_question()
 
-        self.pack_forget()
+        self.destroy()
         qp.pack(fill="both", expand=True)
         self.controller.current_page = qp

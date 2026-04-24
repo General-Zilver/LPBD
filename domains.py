@@ -80,9 +80,20 @@ def main():
 
     db_path = args.db or find_db()
     if not db_path or not db_path.exists():
-        print("Error: local_benefits.db not found.")
-        print("The browser extension hasn't stored anything yet.")
-        sys.exit(1)
+        print("No native host database found (browser extension hasn't stored anything yet).\n")
+        # Still show custom pages even without a DB
+        from custom_pages import load_custom_pages
+        custom = load_custom_pages()
+        if custom:
+            print(f"Custom pages ({len(custom)}):\n")
+            for p in sorted(custom, key=lambda x: x["url"]):
+                status = p["status"]
+                scraped = p.get("last_scraped") or "never"
+                print(f"  [{status}] {p['url']}  (last scraped: {scraped})")
+        else:
+            print("No custom pages tracked either.")
+            print("Add one with: python custom_pages.py add <url>")
+        return
 
     print(f"Database: {db_path}\n")
 
@@ -114,20 +125,15 @@ def main():
         for d in sorted(domains):
             print(f"  {d}")
 
-    # Also show custom pages
-    conn = sqlite3.connect(str(db_path))
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT value FROM web_history WHERE kind = 'page'"
-        ).fetchall()
-        pages = [row[0] for row in rows]
-    finally:
-        conn.close()
-
-    if pages:
-        print(f"\nCustom pages ({len(pages)}):\n")
-        for p in sorted(pages):
-            print(f"  {p}")
+    # Also show custom pages from custom_pages.json
+    from custom_pages import load_custom_pages
+    custom = load_custom_pages()
+    if custom:
+        print(f"\nCustom pages ({len(custom)}):\n")
+        for p in sorted(custom, key=lambda x: x["url"]):
+            status = p["status"]
+            scraped = p.get("last_scraped") or "never"
+            print(f"  [{status}] {p['url']}  (last scraped: {scraped})")
 
 
 if __name__ == "__main__":

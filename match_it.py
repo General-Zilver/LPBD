@@ -21,6 +21,7 @@ def print_validation_report(stats, verbose):
     llm_proposed = stats["llm_proposed"]
     llm_validated = stats["llm_validated"]
     rejected = stats["rejected"]
+    pass2_rejected = stats.get("pass2_rejected", [])
     keyword_detected = stats["keyword_detected"]
 
     print("\n" + "=" * 60)
@@ -29,6 +30,8 @@ def print_validation_report(stats, verbose):
     print(f"  LLM proposed:             {llm_proposed}")
     print(f"  Passed validation:        {llm_validated}")
     print(f"  Rejected:                 {len(rejected)}")
+    if pass2_rejected:
+        print(f"    (pass-2 rejected:       {len(pass2_rejected)})")
     print(f"  Keyword-detected:         {len(keyword_detected)}")
     print(f"  Final total:              {llm_validated + len(keyword_detected)}")
 
@@ -125,6 +128,8 @@ def print_summary(scraped_count, results_path, state_path, stats, verbose):
             print(f"      URL:      {r.page_url}")
             print(f"      Score:    {r.relevance_score}/5")
             print(f"      Action:   {r.action}")
+            print(f"      Eligibility: {getattr(r, 'eligibility_status', '') or 'none'}")
+            print(f"      Match type:  {getattr(r, 'match_type', '') or 'none'}")
             print(f"      Tags:     {', '.join(r.tags) if r.tags else 'none'}")
             print(f"      Summary:  {r.summary}")
             print(f"      Why:      {r.reasoning}")
@@ -164,7 +169,7 @@ def print_performance(stats):
 
     if timings:
         print("\n  Time per stage:")
-        for stage in ["filter", "match", "validate", "detect"]:
+        for stage in ["profile_keywords", "filter", "match", "validate", "detect"]:
             t = timings.get(stage)
             if t is not None:
                 print(f"    {stage:<12} {_fmt_time(t)}")
@@ -209,6 +214,42 @@ def main():
         action="store_true",
         help="Print full details for top results",
     )
+    parser.add_argument(
+        "--verify-pass2",
+        dest="verify_pass2",
+        action="store_true",
+        help="Enable a second strict LLM verification pass before deterministic validation (default: on)",
+    )
+    parser.add_argument(
+        "--no-verify-pass2",
+        dest="verify_pass2",
+        action="store_false",
+        help="Disable the second strict LLM verification pass",
+    )
+    parser.add_argument(
+        "--low-priority",
+        action="store_true",
+        help="Run matcher process at lower OS priority (best effort)",
+    )
+    parser.add_argument(
+        "--num-threads",
+        type=int,
+        default=None,
+        help="Cap Ollama generation threads (maps to options.num_thread)",
+    )
+    parser.add_argument(
+        "--profile-keywords",
+        dest="profile_keywords",
+        action="store_true",
+        help="Use profile-derived LLM keyword suggestions in addition to base keywords (default: on)",
+    )
+    parser.add_argument(
+        "--no-profile-keywords",
+        dest="profile_keywords",
+        action="store_false",
+        help="Disable profile-derived keyword suggestions and use only base keywords",
+    )
+    parser.set_defaults(verify_pass2=True, profile_keywords=True)
     args = parser.parse_args()
 
     scraped_dir = PROJECT_ROOT / "scraped_output"
@@ -246,6 +287,10 @@ def main():
     else:
         print(f"Model:      {resolved_model} (default)")
     print(f"Delay:      {args.delay}s")
+    print(f"Pass2:      {'on' if args.verify_pass2 else 'off'}")
+    print(f"Priority:   {'low' if args.low_priority else 'normal'}")
+    print(f"Threads:    {args.num_threads if args.num_threads else 'default'}")
+    print(f"Profile KW: {'on' if args.profile_keywords else 'off'}")
     print(f"Pages:      {scraped_count} scraped")
     print()
 
@@ -259,6 +304,10 @@ def main():
         model=args.model,
         delay=args.delay,
         verbose=args.verbose,
+        verify_pass2=args.verify_pass2,
+        low_priority=args.low_priority,
+        num_threads=args.num_threads,
+        use_profile_keywords=args.profile_keywords,
     )
 
     # Validation report first (what happened during this run)
@@ -284,3 +333,4 @@ if __name__ == "__main__":
 
             traceback.print_exc()
         sys.exit(1)
+

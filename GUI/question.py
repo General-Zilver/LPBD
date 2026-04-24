@@ -3,6 +3,9 @@ import customtkinter as ctk
 from tkinter import filedialog
 from chat import ChatPage
 from settings import SettingsOverlay
+import json 
+with open("institutions.json", "r") as f:
+    INSTITUTIONS = json.load(f)
 
 
 class QuestionPage(ctk.CTkFrame):
@@ -12,6 +15,7 @@ class QuestionPage(ctk.CTkFrame):
         self.controller = controller
         self.update_mode = False 
         self.target_question = None 
+        self.section_update_mode = False
 
         if selected_options is None:
             selected_options = controller.session.get("selected_options",[])
@@ -164,7 +168,9 @@ class QuestionPage(ctk.CTkFrame):
             question_card,
             text=self.get_current_question(),
             font=ctk.CTkFont(size=18, weight="bold"),
-            anchor="w"
+            anchor="w",
+            justify="left",
+            wraplength=800
         )
 
         self.question_label.pack(pady=(25, 15), padx=20, anchor="w")
@@ -173,14 +179,23 @@ class QuestionPage(ctk.CTkFrame):
         input_row.pack(padx=20, pady=10, fill="x")
 
         input_row.grid_columnconfigure(0, weight=1)
+        # ALWAYS create StringVar
+        self.answer_var = ctk.StringVar()
+        self.answer_var.trace_add("write", self.update_dropdown)
 
+        # Entry (used for ALL questions)
         self.answer_entry = ctk.CTkEntry(
             input_row,
+            textvariable=self.answer_var,
             placeholder_text="Type your answer here...",
             height=40
         )
         self.answer_entry.grid(row=0, column=0, padx=(0, 10), sticky="ew")
 
+        # Dropdown (used ONLY for institution)
+        self.dropdown = ctk.CTkScrollableFrame(input_row, height=150)
+        self.dropdown.grid(row=1, column=0, sticky="ew", pady=(5, 0))
+        self.dropdown.grid_remove()
         ctk.CTkButton(
             input_row,
             text="Upload Document",
@@ -205,9 +220,99 @@ class QuestionPage(ctk.CTkFrame):
             width=160,
             command=self.next_action
         )
-        self.next_button.grid(row=0, column=1, padx=10)
 
+        # Always create it, but don't show yet
+        self.save_close_button = ctk.CTkButton(
+            button_row,
+            text="Save & Close",
+            width=160,
+            fg_color="#2E8B57",
+            hover_color="#1E5F3A",
+            command=self.save_and_close
+        )
+        if self.update_mode:
+            self.next_button.configure(text="Finish")
+            self.section_update_mode = False  # single question mode
+            self.save_close_button.grid_forget()
+        elif self.section_update_mode:
+            self.next_button.configure(text="Finish")
+
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+
+        else:
+            #if hasattr(self, "save_close_button") and self.save_close_button.winfo_ismapped():
+            self.save_close_button.grid_forget()
+        self.next_button.grid(row=0, column=1, padx=10)
+        # self.bind("<Return>", lambda event: self.next_action())
+        self.focus_set()
+
+        # self.answer_entry.bind("<Return>", lambda event: self.next_action())
+        self.answer_entry.bind("<Return>", lambda event: self.on_enter())
         self.update_next_button_text()
+
+    def is_institution_question(self):
+        return self.get_current_question() == "What is your institution name?"
+
+    def select_institution(self, school_name):
+        self.answer_var.set(school_name)
+        self.dropdown.grid_remove()
+
+    def get_selected_institution(self):
+        value = self.answer_var.get().lower()
+
+        for inst in INSTITUTIONS:
+            names = [inst["name"]] + inst.get("aliases", [])
+            for name in names:
+                if value == name.lower():
+                    return inst  # canonical
+
+        return {
+            "name": self.answer_var.get(),
+            "aliases": [],
+            "domain": "",
+            "state": ""
+        }
+
+    def update_dropdown(self, *args):
+        if not self.is_institution_question():
+            return
+
+        query = self.answer_var.get().lower()
+
+        # Clear previous results
+        for widget in self.dropdown.winfo_children():
+            widget.destroy()
+
+        if not query:
+            self.dropdown.grid_remove()
+            return
+
+        matches = []
+
+        for inst in INSTITUTIONS:
+            names = [inst["name"]] + inst.get("aliases", [])
+            for name in names:
+                if query in name.lower():
+                    matches.append(inst["name"])
+                    break
+
+        matches = list(dict.fromkeys(matches))[:10]  # dedupe + limit
+
+        if not matches:
+            self.dropdown.grid_remove()
+            return
+
+        self.dropdown.grid()
+
+        for school in matches:
+            btn = ctk.CTkButton(
+                self.dropdown,
+                text=school,
+                anchor="w",
+                command=lambda s=school: self.select_institution(s)
+            )
+            btn.pack(fill="x", padx=5, pady=2)
 
     # Question Logic
     def get_current_question(self):
@@ -234,11 +339,14 @@ class QuestionPage(ctk.CTkFrame):
     def next_action(self):
         
 
-        answer = self.answer_entry.get()
+        if self.is_institution_question():
+            answer = self.get_selected_institution()
+        else:
+            answer = self.answer_entry.get()
         question = self.get_current_question()
         current_section = self.selected_options[self.current_step - 1]
 
-        username = "default_user"
+        username = self.controller.session["username"]
 
         # Save to JSON
         save_answers(username, question, current_section, answer)
@@ -314,13 +422,38 @@ class QuestionPage(ctk.CTkFrame):
         self.update_progress()
         self.update_next_button_text()
 
-    # Button Text
     def update_next_button_text(self):
 
-        # Single question update mode
-        if getattr(self, "update_mode", False):
+        # UPDATE MODE
+        if self.update_mode:
             self.next_button.configure(text="Finish")
+            self.save_close_button.grid_forget()
+
             return
+        # SECTION UPDATE MODE (full section edit)
+        if self.section_update_mode:
+
+            current_section = self.selected_options[self.current_step - 1]
+            section_questions = self.questions.get(current_section, [])
+
+            if self.current_question_index < len(section_questions) - 1:
+                self.next_button.configure(text="Next")
+            elif self.current_step < len(self.selected_options):
+                next_section = self.selected_options[self.current_step]
+                self.next_button.configure(text=f"Next: {next_section}")
+            else:
+                self.next_button.configure(text="Finish")
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+            return
+
+        # NORMAL MODE → hide button if visible
+        if hasattr(self, "save_close_button") and self.save_close_button.winfo_ismapped():
+            #self.save_close_button.grid_forget()
+            if not self.save_close_button.winfo_ismapped():
+                self.save_close_button.grid(row=0, column=2, padx=10)
+            return
+
 
         if not self.selected_options or self.current_step > len(self.selected_options):
             self.next_button.configure(text="Finish")
@@ -331,18 +464,35 @@ class QuestionPage(ctk.CTkFrame):
 
         if self.current_question_index < len(section_questions) - 1:
             self.next_button.configure(text="Next")
-            return
-
         elif self.current_step < len(self.selected_options):
             next_section = self.selected_options[self.current_step]
             self.next_button.configure(text=f"Next: {next_section}")
         else:
             self.next_button.configure(text="Finish")
+    
     # Inside QuestionPage class
     def refresh_current_question(self):
+        if not self.winfo_exists():
+            return
+        if not hasattr(self, "question_label") or not self.question_label.winfo_exists():
+            return
+
         if not self.selected_options:
             self.question_label.configure(text="No section selected")
             return
+        question = self.get_current_question()
+        self.question_label.configure(text=question)
+
+        self.answer_var.set("")
+        self.dropdown.grid_remove()
+        if self.is_institution_question():
+            self.answer_entry.configure(
+                placeholder_text="Enter you institution name..."
+            )
+        else:
+            self.answer_entry.configure(
+                placeholder_text="Type your answer here..."
+            )
 
         current_section = self.selected_options[self.current_step - 1]
         section_questions = self.questions.get(current_section, [])
@@ -364,3 +514,23 @@ class QuestionPage(ctk.CTkFrame):
         # Update progress bar and button text
         self.update_progress()
         self.update_next_button_text()
+
+    def save_and_close(self):
+        answer = self.answer_entry.get()
+        question = self.get_current_question()
+        current_section = self.selected_options[self.current_step - 1]
+
+        username = self.controller.session["username"]
+
+        # Save exactly like next_action
+        from answers import save_answers
+        save_answers(username, question, current_section, answer)
+
+        print("Saved and exiting update mode")
+
+        self.controller.show_page("chat")
+
+    def on_enter(self):
+        # In update mode, Enter should NOT do anything except maybe ignore or optional save
+
+        self.next_action()
