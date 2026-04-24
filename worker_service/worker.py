@@ -18,11 +18,46 @@ from .pack_store import (
 )
 
 
+# Site-chrome class/id patterns. If any token in a class list or the id
+# contains one of these substrings (case-insensitive), the element is stripped.
+_SITE_CHROME_PATTERNS = [
+    "nav", "navigation", "navbar", "menu", "footer", "sidebar",
+    "breadcrumb", "skip-link", "skiplink", "site-header",
+    "global-header", "masthead",
+]
+
+
 # Normalize HTML into stable plain text so hash comparisons are reliable.
+# Strips site chrome (nav, footer, sidebar, etc.) at the DOM level before
+# extracting text so downstream stages get clean content.
 def _normalize_text(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "html.parser")
-    for tag in soup(["script", "style", "noscript"]):
+
+    # Remove tags that never contain useful content
+    for tag in soup(["script", "style", "noscript", "nav", "footer", "aside"]):
         tag.decompose()
+
+    # Remove elements whose class or id matches site-chrome patterns
+    for el in soup.find_all(True):
+        # Skip headings so we never accidentally strip page titles
+        if el.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            continue
+
+        cls = el.get("class")
+        if cls is not None:
+            if isinstance(cls, str):
+                cls = [cls]
+            cls_lower = " ".join(c.lower() for c in cls)
+            if any(p in cls_lower for p in _SITE_CHROME_PATTERNS):
+                el.decompose()
+                continue
+
+        el_id = el.get("id")
+        if el_id is not None:
+            id_lower = el_id.lower()
+            if any(p in id_lower for p in _SITE_CHROME_PATTERNS):
+                el.decompose()
+
     return " ".join(soup.get_text(" ", strip=True).split())
 
 

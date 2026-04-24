@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import ollama_client
 
 from matching.models import MatchResult, CrossReference
+from matching.profile_signals import build_profile_signals
 from matching.rules import format_hints_for_prompt
 
 MATCH_MODEL = ollama_client.DEFAULT_MODEL
@@ -70,6 +71,16 @@ def format_profile(answers):
     return "\n".join(lines)
 
 
+# Pulls the student's institution name from the answers dict.
+def extract_user_institution(answers):
+    entry = answers.get("What is your institution name?")
+    if not entry:
+        return ""
+    for _section, value in entry.items():
+        return str(value).strip()
+    return ""
+
+
 # Splits long page text on sentence boundaries so each chunk fits
 # the LLM context window with room for the prompt and response.
 def chunk_text(text, max_words=1500):
@@ -98,15 +109,15 @@ def chunk_text(text, max_words=1500):
 
 
 SYSTEM_PROMPT = r"""
-You are a strict extractor.
+You are a broad but grounded benefit classifier.
 
 You will receive one student profile and one web page.
 
 Return ONLY items that satisfy BOTH conditions:
 1. The item is explicitly described on the page.
-2. The item is clearly relevant to the student profile.
+2. The item is a real benefit or actionable support resource for students.
 
-If either condition fails, do not include it.
+If condition 1 fails, do not include it.
 If nothing qualifies, return [].
 
 Valid items:
@@ -143,11 +154,20 @@ Invalid items by themselves:
 
 Do NOT:
 - invent counseling, financial aid, insurance, scholarships, or deadlines
-- guess from the student profile
+- invent user facts that are not in the profile or profile signals
 - guess from common college practice
-- treat academic “counseling” programs as mental health counseling
+- treat academic counseling programs as mental health counseling
 - treat graduate program deadlines as financial aid deadlines
 - output invalid action values
+
+Do not infer attributes about the student that are not explicitly stated in the profile or profile signals.
+This includes but is not limited to: interests, intended major, career goals, high school status, graduate status, military or veteran status, disability status, food insecurity, income level, housing situation, family composition, and immigration status.
+If an attribute is not in the profile or profile signals, do not use it to justify a match.
+
+The student's home institution is provided in the USER INSTITUTION field below.
+If the web page belongs to a different institution, only include the item if the page explicitly shows that it is federal, statewide, transferable across institutions, publicly available to anyone, or explicitly open to non-students of that institution.
+Institution-specific scholarships, programs, and services from a different institution should NOT be included.
+Do not assume a benefit is federal, statewide, transferable, or public unless the page text supports that.
 
 Allowed actions only:
 apply
@@ -159,6 +179,29 @@ be-aware
 
 Use opt-out ONLY if the page explicitly says waiver, decline, opt-out, or default enrollment.
 
+Allowed match_type values:
+direct_match
+general_resource
+aspirational
+needs_info
+not_likely
+
+match_type meaning:
+- direct_match: the profile signals clearly support eligibility or relevance.
+- general_resource: broadly useful to students but not specifically triggered by a need.
+- aspirational: not currently supported but may become relevant if the student changes status, joins a program, improves GPA, changes major, transfers, applies for FAFSA, or meets future requirements.
+- needs_info: the page may be relevant but the profile is missing a required fact.
+- not_likely: the page is related but likely not a fit.
+
+Scoring rubric for relevance_score:
+5 = Directly applies to the student based on explicit profile facts, from the student's home institution or a federal/statewide source, with clear action steps and clear page evidence.
+4 = Strongly relevant but missing one detail, such as eligibility not fully confirmed.
+3 = Useful to review, but not clearly actionable yet.
+2 = Possibly related, but weak or speculative.
+1 = General awareness only.
+
+Do not output an item at score 5 unless all three conditions hold: profile supports it, source supports it, and action is clear.
+
 Return ONLY valid JSON array.
 Each item must contain:
 benefit_name
@@ -169,8 +212,15 @@ reasoning
 action_details
 evidence_quote
 evidence_type
+eligibility_status
+match_type
 inferred_from
 tags
+
+For inferred_from:
+- Include only student facts that are explicitly present in STUDENT PROFILE or PROFILE SIGNALS.
+- Do not include page eligibility requirements unless those requirements are explicitly present in student facts.
+- If no supporting student facts are present, use [].
 
 Every item must include a short evidence_quote copied from the page.
 If you cannot provide evidence_quote, do not include the item.
@@ -178,10 +228,23 @@ If you cannot provide evidence_quote, do not include the item.
 
 
 # Builds the user-side prompt for one page.
-def build_user_prompt(profile_text, hints_text, url, title, page_text):
+def build_user_prompt(profile_text, profile_signals_text, hints_text, user_institution, url, title, page_text):
     return f"""
 STUDENT PROFILE
 {profile_text}
+
+PROFILE SIGNALS
+{profile_signals_text or "None"}
+
+The profile signals are normalized facts extracted from the student's answers.
+The model may use these signals as the source of truth for student facts.
+The model must still only return benefits explicitly described on the page.
+
+USER INSTITUTION
+{user_institution or "Unknown"}
+
+MATCHING HINTS
+{hints_text or "None"}
 
 WEB PAGE
 URL: {url}
@@ -196,8 +259,118 @@ Remember:
 - Degree programs, certificates, majors, and general admissions deadlines are not benefits by themselves.
 - Counseling as an academic specialization is not mental health counseling.
 - If the page does not clearly contain a relevant benefit or actionable support resource, return [].
+- inferred_from must list only facts present in STUDENT PROFILE or PROFILE SIGNALS.
 - Output only a JSON array.
 """.strip()
+
+
+def format_profile_signals_for_prompt(profile_signals):
+    if not isinstance(profile_signals, dict):
+        return ""
+
+    private_keys = {
+        "name",
+        "full_name",
+        "address",
+        "date_of_birth",
+        "dob",
+        "phone",
+        "email",
+        "id",
+        "student_id",
+        "ssn",
+    }
+    lines = []
+    ordered_keys = [
+        "student",
+        "institution",
+        "classification",
+        "full_time",
+        "major_terms",
+        "gpa",
+        "has_fafsa",
+        "insured",
+        "veteran",
+        "has_dependents",
+        "food_insecurity",
+        "has_laptop",
+        "reliable_internet",
+        "on_campus",
+        "has_meal_plan",
+        "honors",
+        "national_merit",
+        "out_of_state",
+        "first_generation",
+        "low_income",
+        "positive_terms",
+        "negative_terms",
+    ]
+
+    for key in ordered_keys:
+        if key in private_keys:
+            continue
+        if key not in profile_signals:
+            continue
+        value = profile_signals.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+        elif isinstance(value, list):
+            if not value:
+                continue
+            text = ", ".join(str(v).strip() for v in value if str(v).strip())
+            if not text:
+                continue
+        elif isinstance(value, bool):
+            text = "true" if value else "false"
+        else:
+            text = str(value).strip()
+            if not text:
+                continue
+        lines.append(f"- {key}: {text}")
+    return "\n".join(lines)
+
+
+def _normalize_free_text(text):
+    lowered = str(text or "").strip().lower()
+    lowered = re.sub(r"[^a-z0-9.]+", " ", lowered)
+    return " ".join(lowered.split())
+
+
+def _coerce_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [value]
+    return []
+
+
+def _filter_inferred_from(raw_value, profile_text, profile_signals_text):
+    source_blob = _normalize_free_text(
+        " ".join([profile_text or "", profile_signals_text or ""])
+    )
+    if not source_blob:
+        return []
+
+    filtered = []
+    seen = set()
+    for item in _coerce_list(raw_value):
+        clean = str(item or "").strip()
+        if not clean:
+            continue
+        normalized = _normalize_free_text(clean)
+        if not normalized:
+            continue
+        if normalized not in source_blob:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        filtered.append(clean)
+    return filtered
 
 
 # Tries to extract a JSON array from the LLM response, handling markdown
@@ -215,12 +388,29 @@ def parse_response_json(response_text):
 
 # Converts a raw benefit dict from the LLM into a MatchResult dataclass.
 # LLMs sometimes return null for fields, so we coalesce None to safe defaults.
-def to_match_result(raw, url, title, source_type, pipeline_run_id):
+def to_match_result(raw, url, title, source_type, pipeline_run_id, profile_text="", profile_signals_text=""):
+    allowed_eligibility_status = {"likely_eligible", "needs_info", "not_eligible"}
+    allowed_match_types = {
+        "direct_match",
+        "general_resource",
+        "aspirational",
+        "needs_info",
+        "not_likely",
+    }
+
     score = raw.get("relevance_score")
     try:
         score = max(1, min(5, int(score)))
     except (TypeError, ValueError):
         score = 1
+
+    eligibility_status = str(raw.get("eligibility_status") or "").strip()
+    if eligibility_status not in allowed_eligibility_status:
+        eligibility_status = ""
+
+    match_type = str(raw.get("match_type") or "").strip()
+    if match_type not in allowed_match_types:
+        match_type = ""
 
     return MatchResult(
         match_id=str(uuid.uuid4()),
@@ -235,8 +425,14 @@ def to_match_result(raw, url, title, source_type, pipeline_run_id):
         action_details=raw.get("action_details") or "",
         evidence_quote=raw.get("evidence_quote") or "",
         evidence_type=raw.get("evidence_type") or "",
+        eligibility_status=eligibility_status,
+        match_type=match_type,
         cross_references=[],
-        inferred_from=[raw.get("inferred_from")] if isinstance(raw.get("inferred_from"), str) else (raw.get("inferred_from") or []),
+        inferred_from=_filter_inferred_from(
+            raw.get("inferred_from"),
+            profile_text,
+            profile_signals_text,
+        ),
         tags=[raw.get("tags")] if isinstance(raw.get("tags"), str) else (raw.get("tags") or []),
         matched_at=datetime.now().isoformat(),
         pipeline_run_id=pipeline_run_id,
@@ -274,13 +470,21 @@ def load_scraped_lookup(scraped_dir):
 
 # Matches a single page against the user's profile. Chunks the page text
 # if needed and calls phi3 for each chunk. Returns a list of MatchResults.
-def match_page(url, title, page_text, profile_text, hints_text,
+def match_page(url, title, page_text, profile_text, profile_signals_text, hints_text, user_institution,
                source_type, pipeline_run_id, model=MATCH_MODEL, llm_options=None):
     chunks = chunk_text(page_text)
     results = []
 
     for chunk in chunks:
-        prompt = build_user_prompt(profile_text, hints_text, url, title, chunk)
+        prompt = build_user_prompt(
+            profile_text,
+            profile_signals_text,
+            hints_text,
+            user_institution,
+            url,
+            title,
+            chunk,
+        )
 
         try:
             response = ollama_client.generate(
@@ -290,7 +494,9 @@ def match_page(url, title, page_text, profile_text, hints_text,
 
             for raw in raw_benefits:
                 result = to_match_result(
-                    raw, url, title, source_type, pipeline_run_id
+                    raw, url, title, source_type, pipeline_run_id,
+                    profile_text=profile_text,
+                    profile_signals_text=profile_signals_text,
                 )
                 if result.action != "not-relevant":
                     results.append(result)
@@ -311,7 +517,10 @@ def match_pages(answers, filtered_pages, scraped_dir=None, scraped_lookup=None,
         raise ConnectionError(err)
 
     profile_text = format_profile(answers)
+    profile_signals = build_profile_signals(answers)
+    profile_signals_text = format_profile_signals_for_prompt(profile_signals)
     hints_text = format_hints_for_prompt(answers)
+    user_institution = extract_user_institution(answers)
 
     if scraped_lookup is not None:
         scraped = scraped_lookup
@@ -344,7 +553,7 @@ def match_pages(answers, filtered_pages, scraped_dir=None, scraped_lookup=None,
         )
 
         results = match_page(
-            url, title, text, profile_text, hints_text,
+            url, title, text, profile_text, profile_signals_text, hints_text, user_institution,
             source_type, pipeline_run_id, model, llm_options
         )
 
@@ -364,3 +573,4 @@ def match_pages(answers, filtered_pages, scraped_dir=None, scraped_lookup=None,
     print(f"  {matched_count} benefit(s) found across "
           f"{len(filtered_pages)} page(s).")
     return all_results
+

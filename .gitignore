@@ -1,11 +1,12 @@
 __pycache__/
 *.pyc
 answers.json
+answers.json.original.txt
+answers.json.elena.txt
 scraped_output/
 embeddings.json
 matched_benefits.json
 pipeline_state.json
-.claude/
 mapped_pages.json
 custom_pages.json
 worker_service/worker_state.db

@@ -1,0 +1,393 @@
+[
+  {
+    "name": "The University of Texas Rio Grande Valley",
+    "aliases": ["UTRGV", "University of Texas Rio Grande Valley"],
+    "domain": "utrgv.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas State Technical College",
+    "aliases": ["TSTC", "Texas State Technical College Harlingen"],
+    "domain": "tstc.edu",
+    "state": "TX"
+  },
+  {
+    "name": "South Texas College",
+    "aliases": ["STC", "South Texas College McAllen"],
+    "domain": "southtexascollege.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas Southmost College",
+    "aliases": ["TSC", "Texas Southmost College Brownsville"],
+    "domain": "tsc.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M University Higher Education Center at McAllen",
+    "aliases": ["TAMU McAllen", "Texas A&M McAllen"],
+    "domain": "mcallen.tamu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M University-Kingsville",
+    "aliases": ["TAMUK", "Texas A&M Kingsville"],
+    "domain": "tamuk.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M International University",
+    "aliases": ["TAMIU", "Texas A&M International"],
+    "domain": "tamiu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Laredo College",
+    "aliases": ["LC", "Laredo Community College"],
+    "domain": "laredo.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Coastal Bend College",
+    "aliases": ["CBC", "Coastal Bend", "Bee County College"],
+    "domain": "coastalbend.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Del Mar College",
+    "aliases": ["DMC", "Del Mar"],
+    "domain": "delmar.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M University-Corpus Christi",
+    "aliases": ["TAMUCC", "Texas A&M Corpus Christi", "Island University"],
+    "domain": "tamucc.edu",
+    "state": "TX"
+  },
+  {
+    "name": "The University of Texas at San Antonio",
+    "aliases": ["UTSA", "University of Texas at San Antonio"],
+    "domain": "utsa.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M University-San Antonio",
+    "aliases": ["TAMUSA", "Texas A&M San Antonio"],
+    "domain": "tamusa.edu",
+    "state": "TX"
+  },
+  {
+    "name": "San Antonio College",
+    "aliases": ["SAC", "San Antonio College", "Alamo Colleges"],
+    "domain": "alamo.edu",
+    "state": "TX"
+  },
+  {
+    "name": "St. Mary's University",
+    "aliases": ["St. Mary's", "St Marys University"],
+    "domain": "stmarytx.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Trinity University",
+    "aliases": ["Trinity", "Trinity U"],
+    "domain": "trinity.edu",
+    "state": "TX"
+  },
+  {
+    "name": "University of the Incarnate Word",
+    "aliases": ["UIW", "Incarnate Word"],
+    "domain": "uiw.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Our Lady of the Lake University",
+    "aliases": ["OLLU", "Our Lady of the Lake"],
+    "domain": "ollusa.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Northwest Vista College",
+    "aliases": ["NVC", "Northwest Vista", "Alamo Colleges"],
+    "domain": "alamo.edu",
+    "state": "TX"
+  },
+  {
+    "name": "St. Philip's College",
+    "aliases": ["SPC", "St. Philip's", "Alamo Colleges"],
+    "domain": "alamo.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Palo Alto College",
+    "aliases": ["PAC", "Palo Alto", "Alamo Colleges"],
+    "domain": "alamo.edu",
+    "state": "TX"
+  },
+  {
+    "name": "The University of Texas at Austin",
+    "aliases": ["UT", "UT Austin", "University of Texas at Austin"],
+    "domain": "utexas.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas State University",
+    "aliases": ["TXST", "Texas State", "Southwest Texas State"],
+    "domain": "txst.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Austin Community College",
+    "aliases": ["ACC", "Austin Community College District"],
+    "domain": "austincc.edu",
+    "state": "TX"
+  },
+  {
+    "name": "St. Edward's University",
+    "aliases": ["St. Edward's", "St Edwards"],
+    "domain": "stedwards.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Southwestern University",
+    "aliases": ["Southwestern", "SU"],
+    "domain": "southwestern.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Huston-Tillotson University",
+    "aliases": ["HT", "Huston-Tillotson"],
+    "domain": "htu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "University of Houston",
+    "aliases": ["UH", "U of H", "University of Houston Main Campus"],
+    "domain": "uh.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Rice University",
+    "aliases": ["Rice", "William Marsh Rice University"],
+    "domain": "rice.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas Southern University",
+    "aliases": ["TSU", "Texas Southern"],
+    "domain": "tsu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "University of St. Thomas",
+    "aliases": ["UST", "St. Thomas Houston"],
+    "domain": "stthom.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Houston Community College",
+    "aliases": ["HCC", "Houston Community College System"],
+    "domain": "hccs.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Sam Houston State University",
+    "aliases": ["SHSU", "Sam Houston State", "Sam Houston"],
+    "domain": "shsu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Stephen F. Austin State University",
+    "aliases": ["SFA", "SFASU", "Stephen F. Austin"],
+    "domain": "sfasu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Lamar University",
+    "aliases": ["Lamar", "LU"],
+    "domain": "lamar.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas A&M University",
+    "aliases": ["TAMU", "Texas A&M College Station", "A&M"],
+    "domain": "tamu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Blinn College",
+    "aliases": ["Blinn", "Blinn College District"],
+    "domain": "blinn.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Prairie View A&M University",
+    "aliases": ["PVAMU", "Prairie View"],
+    "domain": "pvamu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "The University of Texas at Dallas",
+    "aliases": ["UTD", "UT Dallas", "University of Texas at Dallas"],
+    "domain": "utdallas.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Southern Methodist University",
+    "aliases": ["SMU", "Southern Methodist"],
+    "domain": "smu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "University of North Texas",
+    "aliases": ["UNT", "North Texas"],
+    "domain": "unt.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas Christian University",
+    "aliases": ["TCU", "Texas Christian"],
+    "domain": "tcu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "The University of Texas at Arlington",
+    "aliases": ["UTA", "UT Arlington", "University of Texas at Arlington"],
+    "domain": "uta.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Dallas College",
+    "aliases": ["Dallas College", "DCCCD", "Richland College"],
+    "domain": "dallascollege.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Texas Tech University",
+    "aliases": ["TTU", "Texas Tech"],
+    "domain": "ttu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "The University of Texas at El Paso",
+    "aliases": ["UTEP", "University of Texas at El Paso"],
+    "domain": "utep.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Baylor University",
+    "aliases": ["Baylor", "BU"],
+    "domain": "baylor.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Midwestern State University",
+    "aliases": ["MSU Texas", "Midwestern State"],
+    "domain": "msutexas.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Tarleton State University",
+    "aliases": ["Tarleton", "TSU"],
+    "domain": "tarleton.edu",
+    "state": "TX"
+  },
+  {
+    "name": "West Texas A&M University",
+    "aliases": ["WTAMU", "West Texas A&M"],
+    "domain": "wtamu.edu",
+    "state": "TX"
+  },
+  {
+    "name": "Harvard University",
+    "aliases": ["Harvard"],
+    "domain": "harvard.edu",
+    "state": "MA"
+  },
+  {
+    "name": "Yale University",
+    "aliases": ["Yale"],
+    "domain": "yale.edu",
+    "state": "CT"
+  },
+  {
+    "name": "Princeton University",
+    "aliases": ["Princeton"],
+    "domain": "princeton.edu",
+    "state": "NJ"
+  },
+  {
+    "name": "Columbia University",
+    "aliases": ["Columbia", "Columbia University in the City of New York"],
+    "domain": "columbia.edu",
+    "state": "NY"
+  },
+  {
+    "name": "University of Pennsylvania",
+    "aliases": ["UPenn", "Penn"],
+    "domain": "upenn.edu",
+    "state": "PA"
+  },
+  {
+    "name": "Brown University",
+    "aliases": ["Brown"],
+    "domain": "brown.edu",
+    "state": "RI"
+  },
+  {
+    "name": "Dartmouth College",
+    "aliases": ["Dartmouth"],
+    "domain": "dartmouth.edu",
+    "state": "NH"
+  },
+  {
+    "name": "Cornell University",
+    "aliases": ["Cornell"],
+    "domain": "cornell.edu",
+    "state": "NY"
+  },
+  {
+    "name": "Massachusetts Institute of Technology",
+    "aliases": ["MIT", "Massachusetts Institute of Technology"],
+    "domain": "mit.edu",
+    "state": "MA"
+  },
+  {
+    "name": "Stanford University",
+    "aliases": ["Stanford"],
+    "domain": "stanford.edu",
+    "state": "CA"
+  },
+  {
+    "name": "California Institute of Technology",
+    "aliases": ["Caltech", "California Institute of Technology"],
+    "domain": "caltech.edu",
+    "state": "CA"
+  },
+  {
+    "name": "University of Chicago",
+    "aliases": ["UChicago", "Chicago", "U of C"],
+    "domain": "uchicago.edu",
+    "state": "IL"
+  },
+  {
+    "name": "Johns Hopkins University",
+    "aliases": ["JHU", "Johns Hopkins"],
+    "domain": "jhu.edu",
+    "state": "MD"
+  },
+  {
+    "name": "Northwestern University",
+    "aliases": ["Northwestern", "NU"],
+    "domain": "northwestern.edu",
+    "state": "IL"
+  },
+  {
+    "name": "Duke University",
+    "aliases": ["Duke"],
+    "domain": "duke.edu",
+    "state": "NC"
+  }
+  
+]

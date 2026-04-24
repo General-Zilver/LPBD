@@ -128,6 +128,8 @@ def print_summary(scraped_count, results_path, state_path, stats, verbose):
             print(f"      URL:      {r.page_url}")
             print(f"      Score:    {r.relevance_score}/5")
             print(f"      Action:   {r.action}")
+            print(f"      Eligibility: {getattr(r, 'eligibility_status', '') or 'none'}")
+            print(f"      Match type:  {getattr(r, 'match_type', '') or 'none'}")
             print(f"      Tags:     {', '.join(r.tags) if r.tags else 'none'}")
             print(f"      Summary:  {r.summary}")
             print(f"      Why:      {r.reasoning}")
@@ -214,8 +216,15 @@ def main():
     )
     parser.add_argument(
         "--verify-pass2",
+        dest="verify_pass2",
         action="store_true",
-        help="Enable a second strict LLM verification pass before deterministic validation",
+        help="Enable a second strict LLM verification pass before deterministic validation (default: on)",
+    )
+    parser.add_argument(
+        "--no-verify-pass2",
+        dest="verify_pass2",
+        action="store_false",
+        help="Disable the second strict LLM verification pass",
     )
     parser.add_argument(
         "--low-priority",
@@ -240,7 +249,7 @@ def main():
         action="store_false",
         help="Disable profile-derived keyword suggestions and use only base keywords",
     )
-    parser.set_defaults(profile_keywords=True)
+    parser.set_defaults(verify_pass2=True, profile_keywords=True)
     args = parser.parse_args()
 
     scraped_dir = PROJECT_ROOT / "scraped_output"
@@ -324,3 +333,4 @@ if __name__ == "__main__":
 
             traceback.print_exc()
         sys.exit(1)
+
