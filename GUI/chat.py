@@ -33,30 +33,36 @@ class ChatPage(ctk.CTkFrame):
 
     # Loads answers.json to give the LLM the student's profile info
     def _load_answers(self):
+        user = self.controller.session.get("username")
+
         candidates = [
             Path(__file__).resolve().parent.parent / "answers.json",
             Path(__file__).resolve().parent / "answers.json",
         ]
+
         for path in candidates:
             if path.exists():
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    if not data:
+
+                    if not data or user not in data:
                         continue
-                    # answers.json is {username: {question: {section: answer}}}
-                    # grab the first (or current) user's answers
-                    username = next(iter(data))
-                    answers = data[username]
+
+                    answers = data[user]
+
                     lines = []
                     for question, section_map in answers.items():
                         for section, answer in section_map.items():
                             if answer:
                                 lines.append(f"- {question} {answer}")
+
                     if lines:
                         return "\n".join(lines)
+
                 except Exception:
                     pass
+
         return None
 
     # Loads matched_benefits.json to give the LLM context about the user's benefits
@@ -297,5 +303,13 @@ class ChatPage(ctk.CTkFrame):
         threading.Thread(target=lambda: subprocess.run(["python", "scrape_all.py"]), daemon=True).start()
 
     def run_match(self):
-        self.add_message("Running match_it.py...", sender="system")
-        threading.Thread(target=lambda: subprocess.run(["python", "match_it.py"]), daemon=True).start()
+        user = self.controller.session.get("username", "default_user")
+
+        self.add_message(f"Running match_it.py for user: {user}", sender="system")
+
+        threading.Thread(
+            target=lambda: subprocess.run(
+                ["python", "match_it.py", "--user", user]
+            ),
+            daemon=True
+        ).start()
