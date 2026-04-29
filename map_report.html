@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LPBD Mapper Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f1ea;
+  --paper: #fbf9f4;
+  --ink: #1a1814;
+  --ink-soft: #4a463e;
+  --muted: #8a8478;
+  --rule: #d8d2c4;
+  --accent: #b54a2c;
+  --accent-soft: #e8d5cc;
+  --green: #4a6b3a;
+  --green-soft: #d4dcc8;
+  --amber: #a87a1f;
+  --amber-soft: #f0e3c4;
+  --red: #8a2c2c;
+  --red-soft: #ecd0d0;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  background-image: repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(26,24,20,0.025) 31px, rgba(26,24,20,0.025) 32px);
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 48px 32px 80px; }
+header {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 24px;
+  margin-bottom: 32px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 24px;
+}
+h1 {
+  font-family: 'Fraunces', serif;
+  font-weight: 900;
+  font-size: clamp(40px, 6vw, 68px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  margin: 0;
+  font-variation-settings: 'opsz' 144;
+}
+.subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin-bottom: 32px;
+}
+.kpi {
+  background: var(--paper);
+  padding: 20px 24px;
+}
+.kpi-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.kpi-value {
+  font-family: 'Fraunces', serif;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--ink);
+}
+.kpi-value.warn { color: var(--amber); }
+.kpi-value.bad { color: var(--red); }
+.kpi-value.good { color: var(--green); }
+.kpi-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 48px 0 16px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 8px;
+}
+h2 .small {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-left: 12px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 80px;
+  gap: 16px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.bar-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-track {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  height: 22px;
+  position: relative;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--ink);
+}
+.bar-fill.error { background: var(--red); }
+.bar-fill.warn { background: var(--amber); }
+.bar-fill.ok { background: var(--green); }
+.bar-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+.domain-card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.domain-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.domain-name {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.domain-stats {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.domain-stats span { margin-right: 14px; }
+.domain-stats .num { color: var(--ink); font-weight: 700; }
+.domain-stats .num.bad { color: var(--red); }
+.domain-stats .num.warn { color: var(--amber); }
+.domain-stats .num.good { color: var(--green); }
+.detail-toggle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  margin-top: 8px;
+}
+.detail-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  display: none;
+}
+.detail-body.open { display: block; }
+.examples-list {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.examples-list li {
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--rule);
+  word-break: break-all;
+}
+.examples-list a { color: var(--accent); text-decoration: none; }
+.error-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-top: 12px;
+}
+.error-table th {
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 8px;
+}
+.error-table td {
+  padding: 4px 8px;
+  border-bottom: 1px dotted var(--rule);
+  vertical-align: top;
+  word-break: break-all;
+}
+.error-table .cat-cell {
+  white-space: nowrap;
+  width: 130px;
+}
+.cat-pill {
+  display: inline-block;
+  font-size: 9px;
+  padding: 2px 6px;
+  border: 1px solid;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.cat-junk_title { background: var(--amber-soft); color: var(--amber); border-color: var(--amber); }
+.cat-duplicate { background: var(--gray-soft, #e2ddd0); color: var(--ink-soft); border-color: var(--rule); }
+.cat-empty_text { background: var(--gray-soft, #e2ddd0); color: var(--ink-soft); border-color: var(--rule); }
+.cat-auth_utility { background: var(--gray-soft, #e2ddd0); color: var(--ink-soft); border-color: var(--rule); }
+.cat-network { background: var(--red-soft); color: var(--red); border-color: var(--red); }
+.cat-other { background: var(--paper); color: var(--muted); border-color: var(--rule); }
+.cat-http_404, .cat-http_403, .cat-http_401, .cat-http_500, .cat-http_503 {
+  background: var(--red-soft); color: var(--red); border-color: var(--red);
+}
+.search-section {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: 20px 24px;
+  margin-top: 24px;
+}
+.search {
+  width: 100%;
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 0 10px;
+  outline: none;
+  color: var(--ink);
+}
+.search:focus { border-bottom-color: var(--accent); }
+.search-results {
+  margin-top: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.search-results .hit {
+  padding: 6px 0;
+  border-bottom: 1px dotted var(--rule);
+  word-break: break-all;
+}
+.search-results .hit-cat {
+  display: inline-block;
+  font-size: 9px;
+  margin-right: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.search-results .hit a { color: var(--accent); text-decoration: none; }
+.note {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--amber-soft);
+  border-left: 3px solid var(--amber);
+}
+footer {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+@media (max-width: 720px) {
+  .wrap { padding: 32px 20px 60px; }
+  header { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 1fr; gap: 4px; }
+  .domain-head { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Mapper<br>Report</h1>
+      <div class="subtitle">LPBD Pipeline Log &middot; <span id="run-date"></span></div>
+    </div>
+  </header>
+
+  <div id="content"></div>
+
+  <footer>Local Privacy-Based Discovery / Generated <span id="gen-date"></span></footer>
+</div>
+
+<script>
+const DATA = {"type": "map", "domains": [{"name": "utrgv.edu", "url": "https://utrgv.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 5000, "bfs_discovered": 5995, "total_urls": 5995, "progress": [{"crawled": 25, "queue": 375, "kept": 366, "excluded": 68, "current": "/basic-needs"}, {"crawled": 50, "queue": 862, "kept": 878, "excluded": 135, "current": "/international/index.htm"}, {"crawled": 75, "queue": 1122, "kept": 1164, "excluded": 232, "current": "/undergraduate/transfer/index.htm"}, {"crawled": 100, "queue": 1184, "kept": 1253, "excluded": 319, "current": "/transfer/index.htm"}, {"crawled": 125, "queue": 1199, "kept": 1293, "excluded": 391, "current": "/admissions/request-information/index.ht"}, {"crawled": 150, "queue": 1234, "kept": 1353, "excluded": 463, "current": "/re-direct-giving/index.htm"}, {"crawled": 175, "queue": 1412, "kept": 1557, "excluded": 534, "current": "/vaqueros-crisis-line/index.htm"}, {"crawled": 200, "queue": 1418, "kept": 1588, "excluded": 604, "current": "/health-promotion/index.htm"}, {"crawled": 225, "queue": 1553, "kept": 1748, "excluded": 665, "current": "/accommodations/best-practices-for-acces"}, {"crawled": 250, "queue": 1528, "kept": 1748, "excluded": 737, "current": "/procedural-guidelines/index.htm"}, {"crawled": 275, "queue": 1503, "kept": 1748, "excluded": 810, "current": "/faq/index.htm"}, {"crawled": 300, "queue": 1480, "kept": 1751, "excluded": 884, "current": "/re-direct-tx-residency/index.htm"}, {"crawled": 325, "queue": 1462, "kept": 1758, "excluded": 958, "current": "/parking-and-transportation-services/par"}, {"crawled": 350, "queue": 1469, "kept": 1790, "excluded": 1031, "current": "/financial-aid/eligibility-requirements/"}, {"crawled": 375, "queue": 1445, "kept": 1791, "excluded": 1103, "current": "/registration/texas-residency/domicile-d"}, {"crawled": 400, "queue": 1432, "kept": 1803, "excluded": 1185, "current": "/admissions/international/undergraduate-"}, {"crawled": 425, "queue": 1606, "kept": 2002, "excluded": 1258, "current": "/healthcare-analytics-certificate/index."}, {"crawled": 450, "queue": 1585, "kept": 2006, "excluded": 1332, "current": "/master-of-science-in-kinesiology-sport-"}, {"crawled": 475, "queue": 1615, "kept": 2061, "excluded": 1406, "current": "/programs/mfa-creative-writing.htm"}, {"crawled": 500, "queue": 1607, "kept": 2078, "excluded": 1481, "current": "/programs/ma-disaster-studies.htm"}, {"crawled": 525, "queue": 1586, "kept": 2082, "excluded": 1555, "current": "/programs/ms-applied-statistics-and-data"}, {"crawled": 550, "queue": 1562, "kept": 2083, "excluded": 1631, "current": "/accelerated-ms-health-sciences-concentr"}, {"crawled": 575, "queue": 1537, "kept": 2083, "excluded": 1706, "current": "/ms-communication-sciences-and-disorders"}, {"crawled": 600, "queue": 1512, "kept": 2083, "excluded": 1781, "current": "/mse-electrical-engineering.htm"}, {"crawled": 625, "queue": 1487, "kept": 2083, "excluded": 1856, "current": "/bs-integrated-health-science.htm"}, {"crawled": 650, "queue": 1462, "kept": 2083, "excluded": 1931, "current": "/ms-dietetics.htm"}, {"crawled": 675, "queue": 1437, "kept": 2083, "excluded": 2006, "current": "/accelerated-ms-kinesiology-health-profe"}, {"crawled": 700, "queue": 1412, "kept": 2083, "excluded": 2081, "current": "/ba-anthropology.htm"}, {"crawled": 725, "queue": 1394, "kept": 2090, "excluded": 2154, "current": "/how-to-apply/index.htm"}, {"crawled": 750, "queue": 1452, "kept": 2173, "excluded": 2226, "current": "/programs"}, {"crawled": 775, "queue": 1447, "kept": 2193, "excluded": 2300, "current": "/cos/departments/physics"}, {"crawled": 800, "queue": 1696, "kept": 2467, "excluded": 2362, "current": "/innovation/index.htm"}, {"crawled": 825, "queue": 1868, "kept": 2664, "excluded": 2426, "current": "/TDClient/1849/Portal/Home"}, {"crawled": 850, "queue": 2071, "kept": 2892, "excluded": 2488, "current": "/school-of-medicine-v2-archived/departme"}, {"crawled": 875, "queue": 2244, "kept": 3091, "excluded": 2559, "current": "/csci/index.htm"}, {"crawled": 900, "queue": 2502, "kept": 3374, "excluded": 2627, "current": "/staff-resources/index.htm"}, {"crawled": 925, "queue": 2577, "kept": 3474, "excluded": 2696, "current": "/about/office-locations/index.htm"}, {"crawled": 950, "queue": 2553, "kept": 3475, "excluded": 2770, "current": "/departments/research-analytics/reports-"}, {"crawled": 975, "queue": 2529, "kept": 3476, "excluded": 2848, "current": "/mental-health-counseling/group-counseli"}, {"crawled": 1000, "queue": 2504, "kept": 3476, "excluded": 2922, "current": "/undergraduate-admissions/index.htm"}, {"crawled": 1025, "queue": 2491, "kept": 3488, "excluded": 2991, "current": "/training/officers/index.htm"}, {"crawled": 1050, "queue": 2489, "kept": 3511, "excluded": 3058, "current": "/housing/rates-payments/index.htm"}, {"crawled": 1075, "queue": 2571, "kept": 3619, "excluded": 3111, "current": "/coronavirus/cares-act-reporting"}, {"crawled": 1100, "queue": 2681, "kept": 3754, "excluded": 3179, "current": "/catalogs/legacy-catalogs/index.htm"}, {"crawled": 1125, "queue": 2706, "kept": 3804, "excluded": 3251, "current": "/on-campus/infectious-diseases/index.htm"}, {"crawled": 1150, "queue": 2679, "kept": 3804, "excluded": 3325, "current": "/ring-ceremony/ring-scholarship-applicat"}, {"crawled": 1175, "queue": 2672, "kept": 3822, "excluded": 3399, "current": "/2026/04/16/ut-health-rgv-cancer-and-sur"}, {"crawled": 1200, "queue": 2654, "kept": 3829, "excluded": 3473, "current": "/school-of-podiatric-medicine-old/admiss"}, {"crawled": 1225, "queue": 2639, "kept": 3839, "excluded": 3547, "current": "/for-new-and-current-students/thesis-and"}, {"crawled": 1250, "queue": 2625, "kept": 3850, "excluded": 3620, "current": "/for-new-and-current-students/thesis-and"}, {"crawled": 1275, "queue": 2603, "kept": 3853, "excluded": 3689, "current": "/vaqueros-dpm/index.htm"}, {"crawled": 1300, "queue": 2610, "kept": 3885, "excluded": 3762, "current": "/school-of-medicine/index.htm"}, {"crawled": 1325, "queue": 2601, "kept": 3901, "excluded": 3832, "current": "/accelerated-programs/index.htm"}, {"crawled": 1350, "queue": 2576, "kept": 3901, "excluded": 3907, "current": "/consumer-information/re-direct-cost-of-"}, {"crawled": 1375, "queue": 2551, "kept": 3901, "excluded": 3980, "current": "/departmental-info/re-direct-registrar/i"}, {"crawled": 1400, "queue": 2526, "kept": 3901, "excluded": 4048, "current": "/future-residents/living-options/index.h"}, {"crawled": 1425, "queue": 2501, "kept": 3901, "excluded": 4123, "current": "/parking-services/harlingen-convention-c"}, {"crawled": 1450, "queue": 2476, "kept": 3901, "excluded": 4198, "current": "/involvement/leadership-programs/index.h"}, {"crawled": 1475, "queue": 2462, "kept": 3912, "excluded": 4268, "current": "/departments-and-programs/student-suppor"}, {"crawled": 1500, "queue": 2441, "kept": 3916, "excluded": 4339, "current": "/departments-and-programs/re-direct-csi/"}, {"crawled": 1525, "queue": 2417, "kept": 3917, "excluded": 4414, "current": "/about-isp/isp-faculty-award/index.htm"}, {"crawled": 1550, "queue": 2392, "kept": 3917, "excluded": 4489, "current": "/global-vaquero-distinction/courses-and-"}, {"crawled": 1575, "queue": 2367, "kept": 3917, "excluded": 4564, "current": "/paying-for-college/re-direct-tx-residen"}, {"crawled": 1600, "queue": 2351, "kept": 3926, "excluded": 4638, "current": "/students/student-resources/index.htm"}, {"crawled": 1625, "queue": 2326, "kept": 3926, "excluded": 4708, "current": "/staff/lealrning-commons-edinburg/index."}, {"crawled": 1650, "queue": 2302, "kept": 3927, "excluded": 4781, "current": "/facilities-and-services/utrgv-departmen"}, {"crawled": 1675, "queue": 2277, "kept": 3927, "excluded": 4856, "current": "/advising-guides/index.htm"}, {"crawled": 1700, "queue": 2252, "kept": 3927, "excluded": 4929, "current": "/purpose/index.htm"}, {"crawled": 1725, "queue": 2245, "kept": 3945, "excluded": 5005, "current": "/dropin-hours/index.htm"}, {"crawled": 1750, "queue": 2223, "kept": 3948, "excluded": 5075, "current": "/employers/recruitment-policies/index.ht"}, {"crawled": 1775, "queue": 2198, "kept": 3948, "excluded": 5150, "current": "/eligibility/index.htm"}, {"crawled": 1800, "queue": 2243, "kept": 4018, "excluded": 5223, "current": "/know/index.htm"}, {"crawled": 1825, "queue": 2227, "kept": 4027, "excluded": 5347, "current": "/upcoming-courses/index.htm"}, {"crawled": 1850, "queue": 2231, "kept": 4056, "excluded": 5418, "current": "/programs/bs-civil-engineering.htm"}, {"crawled": 1875, "queue": 2206, "kept": 4056, "excluded": 5493, "current": "/programs/bs-physics.htm"}, {"crawled": 1900, "queue": 2181, "kept": 4056, "excluded": 5568, "current": "/programs/ba-philosophy.htm"}, {"crawled": 1925, "queue": 2156, "kept": 4056, "excluded": 5643, "current": "/programs/bba-finance.htm"}, {"crawled": 1950, "queue": 2131, "kept": 4056, "excluded": 5718, "current": "/programs/phd-computer-science-interdisc"}, {"crawled": 1975, "queue": 2106, "kept": 4056, "excluded": 5790, "current": "/programs/ma-spanish-translation-and-int"}, {"crawled": 2000, "queue": 2082, "kept": 4057, "excluded": 5866, "current": "/programs/bs-statistics.htm"}, {"crawled": 2025, "queue": 2058, "kept": 4058, "excluded": 5936, "current": "/payment-options/index.htm"}, {"crawled": 2050, "queue": 2036, "kept": 4061, "excluded": 6012, "current": "/programs/education-degrees/index.htm"}, {"crawled": 2075, "queue": 2011, "kept": 4061, "excluded": 6087, "current": "/programs/business-analytics-certificate"}, {"crawled": 2100, "queue": 1987, "kept": 4062, "excluded": 6160, "current": "/accelerated/programs/health-sciences-he"}, {"crawled": 2125, "queue": 1974, "kept": 4074, "excluded": 6233, "current": "/general/index.htm"}, {"crawled": 2150, "queue": 1949, "kept": 4074, "excluded": 6308, "current": "/graduate/apply-now"}, {"crawled": 2175, "queue": 1963, "kept": 4113, "excluded": 6376, "current": "/financial-services-comptroller/departme"}, {"crawled": 2200, "queue": 1979, "kept": 4154, "excluded": 6446, "current": "/about/meet-the-evp/index.htm"}, {"crawled": 2225, "queue": 2008, "kept": 4208, "excluded": 6516, "current": "/dropping-withdrawing/index.htm"}, {"crawled": 2250, "queue": 2052, "kept": 4277, "excluded": 6591, "current": "/redirect-home/index.htm"}, {"crawled": 2275, "queue": 2032, "kept": 4282, "excluded": 6665, "current": "/redirect-faculty-and-staff/index.htm"}, {"crawled": 2300, "queue": 2116, "kept": 4391, "excluded": 6738, "current": "/chaps/index.htm"}, {"crawled": 2325, "queue": 2132, "kept": 4432, "excluded": 6824, "current": "/schools-and-departments/dance-departmen"}, {"crawled": 2350, "queue": 2107, "kept": 4432, "excluded": 6899, "current": "/about/advisory-council/index.htm"}, {"crawled": 2375, "queue": 2082, "kept": 4432, "excluded": 6974, "current": "/research/news-and-events/index.htm"}, {"crawled": 2400, "queue": 2077, "kept": 4452, "excluded": 7051, "current": "/programs/bs-computer-engineering.htm"}, {"crawled": 2425, "queue": 2053, "kept": 4453, "excluded": 7123, "current": "/data-reports/reports-archive/index.htm"}, {"crawled": 2450, "queue": 2035, "kept": 4460, "excluded": 7200, "current": "/resources/premier-economic-journal/inde"}, {"crawled": 2475, "queue": 2010, "kept": 4460, "excluded": 7275, "current": "/prospective-students/index.htm"}, {"crawled": 2500, "queue": 1986, "kept": 4461, "excluded": 7354, "current": "/departments/r-and-i-dept/index.htm"}, {"crawled": 2525, "queue": 1961, "kept": 4461, "excluded": 7429, "current": "/services/ill-redirect/index.htm"}, {"crawled": 2550, "queue": 1969, "kept": 4495, "excluded": 7501, "current": "/schools-and-departments/school-of-inter"}, {"crawled": 2575, "queue": 1944, "kept": 4495, "excluded": 7578, "current": "/newsroom/2025/12/9/utrgv-breaks-ground-"}, {"crawled": 2600, "queue": 1928, "kept": 4504, "excluded": 7651, "current": "/life-after-graduation/re-direct-continu"}, {"crawled": 2625, "queue": 1903, "kept": 4504, "excluded": 7726, "current": "/human-genetics/index.htm"}, {"crawled": 2650, "queue": 1891, "kept": 4517, "excluded": 7801, "current": "/stay-engaged/press-releases/index.htm"}, {"crawled": 2675, "queue": 1866, "kept": 4517, "excluded": 7876, "current": "/about/recognition-and-awards/index.htm"}, {"crawled": 2700, "queue": 1851, "kept": 4527, "excluded": 7950, "current": "/for-faculty/being-an-esaa-faculty-mento"}, {"crawled": 2725, "queue": 1838, "kept": 4539, "excluded": 8025, "current": "/research/proposals/index.htm"}, {"crawled": 2750, "queue": 1912, "kept": 4638, "excluded": 8100, "current": "/news/gallery/gallery-2014/index.htm"}, {"crawled": 2775, "queue": 1887, "kept": 4638, "excluded": 8175, "current": "/workforce/internships/high-scholars-sum"}, {"crawled": 2800, "queue": 1862, "kept": 4638, "excluded": 8250, "current": "/schools-and-departments/department-of-t"}, {"crawled": 2825, "queue": 1863, "kept": 4664, "excluded": 8321, "current": "/resources/campus-communities/former-fos"}, {"crawled": 2850, "queue": 1854, "kept": 4680, "excluded": 8393, "current": "/newsroom/2026/03/16/utrgv-school-of-med"}, {"crawled": 2875, "queue": 1881, "kept": 4732, "excluded": 8458, "current": "/newsroom/2025/07/08/utrgv-school-of-nur"}, {"crawled": 2900, "queue": 1859, "kept": 4735, "excluded": 8539, "current": "/student-success-network/student-policie"}, {"crawled": 2925, "queue": 1842, "kept": 4743, "excluded": 8610, "current": "/umc/news/building-our-future"}, {"crawled": 2950, "queue": 1827, "kept": 4753, "excluded": 8682, "current": "/learning-framework/contact/index.htm"}, {"crawled": 2975, "queue": 1802, "kept": 4753, "excluded": 8757, "current": "/contact-us/testing-edinburg/index.htm"}, {"crawled": 3000, "queue": 1779, "kept": 4755, "excluded": 8832, "current": "/utrgv-technologies/index.htm"}, {"crawled": 3025, "queue": 1754, "kept": 4755, "excluded": 8907, "current": "/utrgv-technologies/2018-optical-metamat"}, {"crawled": 3050, "queue": 1729, "kept": 4755, "excluded": 8982, "current": "/academics/centers-for-excellence/index."}, {"crawled": 3075, "queue": 1704, "kept": 4755, "excluded": 9057, "current": "/getting-support/knowledge-base/index.ht"}, {"crawled": 3100, "queue": 1679, "kept": 4755, "excluded": 9132, "current": "/teaching-online/index.htm"}, {"crawled": 3125, "queue": 1667, "kept": 4768, "excluded": 9202, "current": "/ehsrm/programs/training/driver/driver-s"}, {"crawled": 3150, "queue": 1648, "kept": 4774, "excluded": 9276, "current": "/programs/env-protection/index.htm"}, {"crawled": 3175, "queue": 1623, "kept": 4774, "excluded": 9351, "current": "/managers/compensation/index.htm"}, {"crawled": 3200, "queue": 1598, "kept": 4774, "excluded": 9426, "current": "/current-employee/index.htm"}, {"crawled": 3225, "queue": 1573, "kept": 4774, "excluded": 9501, "current": "/benefits/work-life-benefits/index.htm"}, {"crawled": 3250, "queue": 1548, "kept": 4774, "excluded": 9576, "current": "/testing/advancedplacement/apsi/index.ht"}, {"crawled": 3275, "queue": 1526, "kept": 4777, "excluded": 9655, "current": "/services/document-delivery/index.htm"}, {"crawled": 3300, "queue": 1501, "kept": 4777, "excluded": 9721, "current": "/cos/schools-and-departments/earth-envir"}, {"crawled": 3325, "queue": 1476, "kept": 4777, "excluded": 9795, "current": "/advisement/starting-your-business/index"}, {"crawled": 3350, "queue": 1467, "kept": 4793, "excluded": 9880, "current": "/programs/bfa-art-visual-communication-d"}, {"crawled": 3375, "queue": 1457, "kept": 4809, "excluded": 9974, "current": "/accelerated/programs/master-of-science-"}, {"crawled": 3400, "queue": 1447, "kept": 4824, "excluded": 10062, "current": "/funding-resources/cost-of-attendance/in"}, {"crawled": 3425, "queue": 1422, "kept": 4824, "excluded": 10136, "current": "/current-students/ia-ss-services/transfe"}, {"crawled": 3450, "queue": 1397, "kept": 4824, "excluded": 10211, "current": "/accelerated/programs/master-of-educatio"}, {"crawled": 3475, "queue": 1372, "kept": 4824, "excluded": 10286, "current": "/fast-track/index.htm"}, {"crawled": 3500, "queue": 1371, "kept": 4848, "excluded": 10354, "current": "/ucentral/paying-for-college/financial-a"}, {"crawled": 3525, "queue": 1387, "kept": 4889, "excluded": 10425, "current": "/housing/en-us/residence-halls/the-villa"}, {"crawled": 3550, "queue": 1364, "kept": 4891, "excluded": 10493, "current": "/about/senators/index.htm"}, {"crawled": 3575, "queue": 1338, "kept": 4891, "excluded": 10565, "current": "/compensation/index.htm"}, {"crawled": 3600, "queue": 1313, "kept": 4891, "excluded": 10639, "current": "/financial-deadlines/index.htm"}, {"crawled": 3625, "queue": 1288, "kept": 4891, "excluded": 10714, "current": "/departments/emergency-management/index."}, {"crawled": 3650, "queue": 1262, "kept": 4891, "excluded": 10782, "current": "/departments/travel/guides/index.htm"}, {"crawled": 3675, "queue": 1283, "kept": 4937, "excluded": 10847, "current": "/institutional-advancement/index.htm"}, {"crawled": 3700, "queue": 1326, "kept": 5005, "excluded": 10909, "current": "/msa"}, {"crawled": 3725, "queue": 1344, "kept": 5048, "excluded": 10976, "current": "/studentunion/food-court/index.htm"}, {"crawled": 3750, "queue": 1327, "kept": 5056, "excluded": 11049, "current": "/ohs/emergency-equipment/index.htm"}, {"crawled": 3775, "queue": 1302, "kept": 5056, "excluded": 11121, "current": "/campus-climate/index.htm"}, {"crawled": 3800, "queue": 1290, "kept": 5069, "excluded": 11192, "current": "/forms/re-direct-business-card-stationer"}, {"crawled": 3825, "queue": 1266, "kept": 5070, "excluded": 11265, "current": "/mfa-creative-writing-student-resources/"}, {"crawled": 3850, "queue": 1244, "kept": 5073, "excluded": 11336, "current": "/private-loans/index.htm"}, {"crawled": 3875, "queue": 1222, "kept": 5076, "excluded": 11405, "current": "/commencement-information/index.htm"}, {"crawled": 3900, "queue": 1200, "kept": 5079, "excluded": 11479, "current": "/interprofessional-education/index.htm"}, {"crawled": 3925, "queue": 1175, "kept": 5079, "excluded": 11550, "current": "/campus-card-services/forms/vbucks-refun"}, {"crawled": 3950, "queue": 1153, "kept": 5082, "excluded": 11612, "current": "/2024/index.htm"}, {"crawled": 3975, "queue": 1135, "kept": 5089, "excluded": 11686, "current": "/community-faculty/index.htm"}, {"crawled": 4000, "queue": 1110, "kept": 5089, "excluded": 11761, "current": "/educational-affairs/scholarly-activitie"}, {"crawled": 4025, "queue": 1096, "kept": 5100, "excluded": 11835, "current": "/educational-affairs/scholarly-activitie"}, {"crawled": 4050, "queue": 1095, "kept": 5124, "excluded": 11940, "current": "/enrollment-requirement/index.htm"}, {"crawled": 4075, "queue": 1083, "kept": 5137, "excluded": 12025, "current": "/transient/index.htm"}, {"crawled": 4100, "queue": 1083, "kept": 5162, "excluded": 12093, "current": "/commencement-programs/index.htm"}, {"crawled": 4125, "queue": 1058, "kept": 5162, "excluded": 12168, "current": "/departments/bursar-office/methods-of-pa"}, {"crawled": 4150, "queue": 1033, "kept": 5162, "excluded": 12239, "current": "/school-of-podiatric-medicine-old/educat"}, {"crawled": 4175, "queue": 1008, "kept": 5162, "excluded": 12313, "current": "/our-goals/index.htm"}, {"crawled": 4200, "queue": 983, "kept": 5162, "excluded": 12388, "current": "/newsroom/2025/10/2/wear-orange-every-fr"}, {"crawled": 4225, "queue": 958, "kept": 5162, "excluded": 12464, "current": "/south-padre-island-campus/index.htm"}, {"crawled": 4250, "queue": 933, "kept": 5162, "excluded": 12539, "current": "/about-gme/about-the-rgv/index.htm"}, {"crawled": 4275, "queue": 908, "kept": 5162, "excluded": 12614, "current": "/2025/07/07/a-sunburn-today-can-mean-ski"}, {"crawled": 4300, "queue": 883, "kept": 5162, "excluded": 12689, "current": "/program-description/index.htm"}, {"crawled": 4325, "queue": 857, "kept": 5162, "excluded": 12764, "current": "/civil-war-trail/webb-county/zacate-cree"}, {"crawled": 4350, "queue": 832, "kept": 5162, "excluded": 12839, "current": "/civil-war-trail/cameron-county/clarksvi"}, {"crawled": 4375, "queue": 807, "kept": 5162, "excluded": 12913, "current": "/about/community-engagement/index.htm"}, {"crawled": 4400, "queue": 782, "kept": 5162, "excluded": 12988, "current": "/attractions/index.htm"}, {"crawled": 4425, "queue": 757, "kept": 5162, "excluded": 13062, "current": "/resources/educational-tools/index.htm"}, {"crawled": 4450, "queue": 781, "kept": 5211, "excluded": 13135, "current": "/community-engagement/institute-for-cani"}, {"crawled": 4475, "queue": 756, "kept": 5211, "excluded": 13209, "current": "/sair/index.htm"}, {"crawled": 4500, "queue": 1038, "kept": 5519, "excluded": 13239, "current": "/accessibility.html"}, {"crawled": 4525, "queue": 1032, "kept": 5539, "excluded": 13278, "current": "/departments/re-direct-apex/index.htm"}, {"crawled": 4550, "queue": 1038, "kept": 5571, "excluded": 13351, "current": "/engaged/get-started/service-learning"}, {"crawled": 4575, "queue": 1061, "kept": 5619, "excluded": 13421, "current": "/carnegie-classification/yoy-growth-rate"}, {"crawled": 4600, "queue": 1045, "kept": 5628, "excluded": 13490, "current": "/argo-spi/appr-revi-process/index.htm"}, {"crawled": 4625, "queue": 1020, "kept": 5628, "excluded": 13561, "current": "/doctoral-insights-engine/navigate-dashb"}, {"crawled": 4650, "queue": 1005, "kept": 5638, "excluded": 13630, "current": "/research/departments/research-analytics"}, {"crawled": 4675, "queue": 979, "kept": 5638, "excluded": 13702, "current": "/discounts-electronic-and-services/index"}, {"crawled": 4700, "queue": 955, "kept": 5639, "excluded": 13773, "current": "/research/for-researchers/forms-policies"}, {"crawled": 4725, "queue": 955, "kept": 5664, "excluded": 13844, "current": "/downloads/students/index.htm"}, {"crawled": 4750, "queue": 935, "kept": 5669, "excluded": 13915, "current": "/nursing/about/administration/index.htm"}, {"crawled": 4775, "queue": 917, "kept": 5676, "excluded": 13994, "current": "/vanessa-ceballos/index.htm"}, {"crawled": 4800, "queue": 908, "kept": 5692, "excluded": 14058, "current": "/admissions/cpme-required-outcomes/index"}, {"crawled": 4825, "queue": 916, "kept": 5726, "excluded": 14132, "current": "/cmas"}, {"crawled": 4850, "queue": 1013, "kept": 5848, "excluded": 14201, "current": "/_links/Summer 2021 Submission Link "}, {"crawled": 4875, "queue": 999, "kept": 5859, "excluded": 14271, "current": "/finance-and-fiscal-reporting/department"}, {"crawled": 4900, "queue": 975, "kept": 5860, "excluded": 14345, "current": "/tornando/index.htm"}, {"crawled": 4925, "queue": 986, "kept": 5896, "excluded": 14414, "current": "/cofa/schools-and-departments/school-of-"}, {"crawled": 4950, "queue": 1012, "kept": 5947, "excluded": 14481, "current": "/rcvcobe/schools-and-departments/managem"}, {"crawled": 4975, "queue": 1001, "kept": 5961, "excluded": 14555, "current": "/messages/previous/2018/index.htm"}, {"crawled": 5000, "queue": 976, "kept": 5961, "excluded": 14630, "current": "/presidents-medal-of-honor/fall-2015-ina"}], "examples": ["https://colleague.utrgv.edu/UI46P/index.htm", "https://enrollment.utrgv.edu/Gradprogramupdate", "https://enrollment.utrgv.edu/applyscholarships", "https://enrollment.utrgv.edu/fa_online_event_calendar", "https://enrollment.utrgv.edu/major-change"], "exclusion_ratio": 0.7105045893837113}, {"name": "my.utrgv.edu", "url": "https://my.utrgv.edu", "completed": true, "no_sitemap": false, "sitemap_count": 0, "bfs_fetched": 0, "bfs_discovered": 0, "total_urls": 0, "progress": [], "examples": [], "exclusion_ratio": 0}, {"name": "brightspace.utrgv.edu", "url": "https://brightspace.utrgv.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 0, "bfs_discovered": 0, "total_urls": 0, "progress": [], "examples": [], "exclusion_ratio": 0}, {"name": "sts.southtexascollege.edu", "url": "https://sts.southtexascollege.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 0, "bfs_discovered": 0, "total_urls": 0, "progress": [], "examples": [], "exclusion_ratio": 0}, {"name": "careers.utrgv.edu", "url": "https://careers.utrgv.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 0, "bfs_discovered": 0, "total_urls": 0, "progress": [], "examples": [], "exclusion_ratio": 0}, {"name": "assist.utrgv.edu", "url": "https://assist.utrgv.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 0, "bfs_discovered": 0, "total_urls": 0, "progress": [], "examples": [], "exclusion_ratio": 0}, {"name": "southtexascollege.edu", "url": "https://southtexascollege.edu", "completed": true, "no_sitemap": true, "sitemap_count": 0, "bfs_fetched": 2391, "bfs_discovered": 3458, "total_urls": 3458, "progress": [{"crawled": 25, "queue": 424, "kept": 439, "excluded": 62, "current": "/life"}, {"crawled": 50, "queue": 895, "kept": 935, "excluded": 106, "current": "/index.html"}, {"crawled": 75, "queue": 1082, "kept": 1147, "excluded": 160, "current": "/about/contact/index.html"}, {"crawled": 100, "queue": 1105, "kept": 1199, "excluded": 241, "current": "/about/notices/notice-of-non-discriminat"}, {"crawled": 125, "queue": 1119, "kept": 1282, "excluded": 293, "current": "/academics/transfer"}, {"crawled": 150, "queue": 1193, "kept": 1382, "excluded": 344, "current": "/workday/first-day.html"}, {"crawled": 175, "queue": 1245, "kept": 1461, "excluded": 396, "current": "/ai/index.html"}, {"crawled": 200, "queue": 1240, "kept": 1493, "excluded": 454, "current": "/academics/dance/index.html"}, {"crawled": 225, "queue": 1227, "kept": 1510, "excluded": 511, "current": "/academics/bsn"}, {"crawled": 250, "queue": 1223, "kept": 1549, "excluded": 560, "current": "/south-texas-college-alumna-strives-to-p"}, {"crawled": 275, "queue": 1209, "kept": 1560, "excluded": 560, "current": "/stc-graduate-promotes-mental-health-for"}, {"crawled": 300, "queue": 1178, "kept": 1587, "excluded": 585, "current": "/life/student-organizations.html"}, {"crawled": 325, "queue": 1097, "kept": 1598, "excluded": 638, "current": "/"}, {"crawled": 350, "queue": 1193, "kept": 1728, "excluded": 691, "current": "/cle/tutoring.html"}, {"crawled": 375, "queue": 1119, "kept": 1754, "excluded": 737, "current": "/index.html"}, {"crawled": 400, "queue": 845, "kept": 1798, "excluded": 787, "current": "/academics/human-resources/index.html"}, {"crawled": 425, "queue": 866, "kept": 1844, "excluded": 841, "current": "/academics/vocational-nursing/index.html"}, {"crawled": 450, "queue": 868, "kept": 1871, "excluded": 893, "current": "/art-gallery/index.html"}, {"crawled": 475, "queue": 866, "kept": 1894, "excluded": 948, "current": "/academics/fine-performing-arts/index.ht"}, {"crawled": 500, "queue": 850, "kept": 1903, "excluded": 998, "current": "/academics/physics/index.html"}, {"crawled": 525, "queue": 845, "kept": 1943, "excluded": 1043, "current": "/scholastic-regulations/graduation-requi"}, {"crawled": 550, "queue": 813, "kept": 1945, "excluded": 1075, "current": "/academics/information-technology/index."}, {"crawled": 575, "queue": 781, "kept": 1945, "excluded": 1129, "current": "/academics/medical-assistant/index.html"}, {"crawled": 600, "queue": 755, "kept": 1964, "excluded": 1227, "current": "/filedrop/finaid-appeals"}, {"crawled": 625, "queue": 689, "kept": 1975, "excluded": 1257, "current": "/copyright/fairuse"}, {"crawled": 650, "queue": 644, "kept": 1979, "excluded": 1298, "current": "/handbook"}, {"crawled": 675, "queue": 856, "kept": 2250, "excluded": 1349, "current": "/purchasing/mail"}, {"crawled": 700, "queue": 786, "kept": 2269, "excluded": 1383, "current": "/certificate-associate-degrees/division-"}, {"crawled": 725, "queue": 758, "kept": 2269, "excluded": 1395, "current": "/baccalaureate-degrees/bsn-rn-to-bsn"}, {"crawled": 750, "queue": 731, "kept": 2271, "excluded": 1395, "current": "/demsa-students-and-faculty-at-south-tex"}, {"crawled": 775, "queue": 703, "kept": 2273, "excluded": 1436, "current": "/computerscience/index.html"}, {"crawled": 800, "queue": 669, "kept": 2283, "excluded": 1474, "current": "/astronomy"}, {"crawled": 825, "queue": 743, "kept": 2383, "excluded": 1496, "current": "/music"}, {"crawled": 850, "queue": 795, "kept": 2460, "excluded": 1511, "current": "/ComputerScience"}, {"crawled": 875, "queue": 891, "kept": 2581, "excluded": 1527, "current": "/organizationalleadership"}, {"crawled": 900, "queue": 937, "kept": 2657, "excluded": 1545, "current": "/srr"}, {"crawled": 925, "queue": 887, "kept": 2665, "excluded": 1597, "current": "/certificate-associate-degrees/division-"}, {"crawled": 950, "queue": 860, "kept": 2666, "excluded": 1621, "current": "/certificate-associate-degrees/division-"}, {"crawled": 975, "queue": 836, "kept": 2676, "excluded": 1652, "current": "/stc-students-advocate-for-better-therap"}, {"crawled": 1000, "queue": 817, "kept": 2683, "excluded": 1688, "current": "/academics/pharmacy"}, {"crawled": 1025, "queue": 779, "kept": 2686, "excluded": 1733, "current": "/certificate-associate-degrees/division-"}, {"crawled": 1050, "queue": 745, "kept": 2698, "excluded": 1800, "current": "/history-film-series-labor-on-film-sprin"}, {"crawled": 1075, "queue": 719, "kept": 2705, "excluded": 1867, "current": "/news"}, {"crawled": 1100, "queue": 698, "kept": 2709, "excluded": 1920, "current": "/ems"}, {"crawled": 1125, "queue": 676, "kept": 2713, "excluded": 1969, "current": "/sociology"}, {"crawled": 1150, "queue": 651, "kept": 2713, "excluded": 2015, "current": "/career-expo"}, {"crawled": 1175, "queue": 629, "kept": 2716, "excluded": 2074, "current": "/pass"}, {"crawled": 1200, "queue": 609, "kept": 2721, "excluded": 2113, "current": "/communication"}, {"crawled": 1225, "queue": 605, "kept": 2743, "excluded": 2152, "current": "/admissions"}, {"crawled": 1250, "queue": 580, "kept": 2743, "excluded": 2196, "current": "/cpit/courses/career/dog-grooming/index."}, {"crawled": 1275, "queue": 554, "kept": 2743, "excluded": 2338, "current": "/office-administration"}, {"crawled": 1300, "queue": 589, "kept": 2803, "excluded": 2384, "current": "/public-admin"}, {"crawled": 1325, "queue": 539, "kept": 2803, "excluded": 2438, "current": "/oer/eTextBookOER"}, {"crawled": 1350, "queue": 506, "kept": 2805, "excluded": 2452, "current": "/culinaryarts/culinaryartsoer"}, {"crawled": 1375, "queue": 485, "kept": 2809, "excluded": 2457, "current": "/kinesiology/kinesiologywebsites"}, {"crawled": 1400, "queue": 463, "kept": 2812, "excluded": 2463, "current": "/philosophy/philosophywriting"}, {"crawled": 1425, "queue": 446, "kept": 2820, "excluded": 2473, "current": "/geology/geologyoer"}, {"crawled": 1450, "queue": 426, "kept": 2825, "excluded": 2488, "current": "/arts/fineartsoer"}, {"crawled": 1475, "queue": 405, "kept": 2829, "excluded": 2495, "current": "/LearningFramework/collegesuccessoer"}, {"crawled": 1500, "queue": 410, "kept": 2859, "excluded": 2497, "current": "/facultyresources/FacultyResBB"}, {"crawled": 1525, "queue": 392, "kept": 2866, "excluded": 2501, "current": "/lawenforcement/lawenforcementoer"}, {"crawled": 1550, "queue": 376, "kept": 2875, "excluded": 2505, "current": "/sociology/sociologywriting"}, {"crawled": 1575, "queue": 355, "kept": 2879, "excluded": 2511, "current": "/aedt/aedtwriting"}, {"crawled": 1600, "queue": 335, "kept": 2884, "excluded": 2524, "current": "/EdsRecord/nlebk,2264641"}, {"crawled": 1625, "queue": 334, "kept": 2908, "excluded": 2529, "current": "/politicalscience/polscihome"}, {"crawled": 1650, "queue": 312, "kept": 2911, "excluded": 2538, "current": "/HIST2301"}, {"crawled": 1675, "queue": 290, "kept": 2915, "excluded": 2542, "current": "/business/businesshelp"}, {"crawled": 1700, "queue": 268, "kept": 2918, "excluded": 2549, "current": "/LangCultStu/languagestudieshome"}, {"crawled": 1725, "queue": 241, "kept": 2921, "excluded": 2577, "current": "/academics/honors"}, {"crawled": 1750, "queue": 218, "kept": 2931, "excluded": 2632, "current": "/cpit/edinburg"}, {"crawled": 1775, "queue": 128, "kept": 2934, "excluded": 2651, "current": "/math/index.html"}, {"crawled": 1800, "queue": 104, "kept": 2936, "excluded": 2709, "current": "/EdsRecord/nlebk,1852692"}, {"crawled": 1825, "queue": 79, "kept": 2936, "excluded": 2709, "current": "/fire/index.html"}, {"crawled": 1850, "queue": 52, "kept": 2936, "excluded": 2734, "current": "/Record/u212519"}, {"crawled": 1875, "queue": 27, "kept": 2936, "excluded": 2742, "current": "/orgl/index.html"}, {"crawled": 1900, "queue": 11, "kept": 2948, "excluded": 2828, "current": "/projectmanagement"}, {"crawled": 1925, "queue": 14, "kept": 2976, "excluded": 3006, "current": "/bhm-events-2025"}, {"crawled": 1950, "queue": 18, "kept": 3005, "excluded": 3159, "current": "/5artandmemory"}, {"crawled": 1975, "queue": 13, "kept": 3025, "excluded": 3315, "current": "/archthruart"}, {"crawled": 2000, "queue": 13, "kept": 3050, "excluded": 3507, "current": "/craig_migliaccio"}, {"crawled": 2025, "queue": 3, "kept": 3065, "excluded": 3681, "current": "/disc-personality-training-with-eyes-on-"}, {"crawled": 2050, "queue": 2, "kept": 3091, "excluded": 3909, "current": "/newsevents/blog/page/17"}, {"crawled": 2075, "queue": 19, "kept": 3136, "excluded": 4087, "current": "/connections"}, {"crawled": 2100, "queue": 16, "kept": 3159, "excluded": 4263, "current": "/fragmentos-y-suturas"}, {"crawled": 2125, "queue": 2, "kept": 3170, "excluded": 4430, "current": "/winter-break-closing"}, {"crawled": 2150, "queue": 10, "kept": 3204, "excluded": 4626, "current": "/leila-m-hernandez-la-spiritu"}, {"crawled": 2175, "queue": 7, "kept": 3226, "excluded": 4801, "current": "/south-texas-ceramic-showdown-more-than-"}, {"crawled": 2200, "queue": 16, "kept": 3261, "excluded": 5001, "current": "/false-misleading-clickbait-y-and-satiri"}, {"crawled": 2225, "queue": 14, "kept": 3284, "excluded": 5182, "current": "/libraryevents"}, {"crawled": 2250, "queue": 12, "kept": 3308, "excluded": 5360, "current": "/conceptualization-expression-and-feelin"}, {"crawled": 2275, "queue": 10, "kept": 3332, "excluded": 5521, "current": "/mexican-american-women-2014"}, {"crawled": 2300, "queue": 7, "kept": 3356, "excluded": 5700, "current": "/newsevents/blog/page/39"}, {"crawled": 2325, "queue": 17, "kept": 3391, "excluded": 5885, "current": "/staff-pick-outlaw-platoon"}, {"crawled": 2350, "queue": 13, "kept": 3416, "excluded": 6060, "current": "/read-patricia-ballinger-recommends"}, {"crawled": 2375, "queue": 9, "kept": 3441, "excluded": 6242, "current": "/staff-pick-the-next-100-years"}], "examples": ["https://academic-eb-com.ezproxy.southtexascollege.edu/levels/collegiate", "https://academicaffairs.southtexascollege.edu", "https://academicaffairs.southtexascollege.edu/academicexcellence", "https://academicaffairs.southtexascollege.edu/academicexcellence/honors", "https://academicaffairs.southtexascollege.edu/academicexcellence/honors/index.html"], "exclusion_ratio": 0.644634927191986}], "totals": {"domains": 7, "urls": 9453, "completed_domains": 7}};
+const VIEW_TYPE = "map";
+
+function fmt(n) { return n == null ? "0" : n.toLocaleString(); }
+function escapeHTML(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderKPIs(items) {
+  return `<div class="kpi-grid">${items.map(i => `
+    <div class="kpi">
+      <div class="kpi-label">${escapeHTML(i.label)}</div>
+      <div class="kpi-value ${i.tone || ''}">${escapeHTML(i.value)}</div>
+      ${i.sub ? `<div class="kpi-sub">${escapeHTML(i.sub)}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+
+function renderBars(rows, max, getClass) {
+  return rows.map(r => {
+    const pct = max > 0 ? (r.value / max * 100) : 0;
+    const cls = getClass ? getClass(r) : '';
+    return `<div class="bar-row">
+      <div class="bar-label">${escapeHTML(r.label)}</div>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="bar-count">${fmt(r.value)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- MAP VIEW ----------
+function renderMap(data) {
+  const t = data.totals;
+  const completePct = t.domains > 0 ? Math.round(t.completed_domains / t.domains * 100) : 0;
+  let html = renderKPIs([
+    { label: "Domains", value: fmt(t.domains), sub: `${t.completed_domains} completed (${completePct}%)`, tone: completePct === 100 ? 'good' : 'warn' },
+    { label: "Total URLs", value: fmt(t.urls), sub: "discovered across all domains" },
+    { label: "Avg per domain", value: fmt(Math.round(t.urls / Math.max(t.domains, 1))), sub: "URLs per mapped site" },
+  ]);
+
+  // Per-domain bars
+  html += `<h2>URLs per Domain <span class="small">${data.domains.length} domains</span></h2>`;
+  const sorted = [...data.domains].sort((a, b) => b.total_urls - a.total_urls);
+  const max = Math.max(...sorted.map(d => d.total_urls), 1);
+  html += renderBars(
+    sorted.map(d => ({ label: d.name, value: d.total_urls })),
+    max,
+    () => ''
+  );
+
+  // Per-domain detail cards
+  html += `<h2>Domain Details</h2>`;
+  data.domains.forEach((d, idx) => {
+    const exclPct = d.progress.length > 0 ? Math.round(d.exclusion_ratio * 100) : 0;
+    html += `<div class="domain-card">
+      <div class="domain-head">
+        <div class="domain-name">${escapeHTML(d.name)}</div>
+        <div class="domain-stats">
+          <span><span class="num ${d.completed ? 'good' : 'bad'}">${d.completed ? 'OK' : 'INCOMPLETE'}</span></span>
+          <span>URLs: <span class="num">${fmt(d.total_urls)}</span></span>
+          ${d.bfs_fetched != null ? `<span>BFS fetched: <span class="num">${fmt(d.bfs_fetched)}</span></span>` : ''}
+          <span>Excluded: <span class="num ${exclPct > 60 ? 'warn' : ''}">${exclPct}%</span></span>
+          ${d.no_sitemap ? `<span class="num warn">no sitemap</span>` : ''}
+        </div>
+      </div>
+      <button class="detail-toggle" onclick="document.getElementById('det-${idx}').classList.toggle('open')">Toggle examples and crawl progress</button>
+      <div id="det-${idx}" class="detail-body">
+        ${d.examples.length > 0 ? `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Top 5 example URLs</div>
+          <ul class="examples-list">${d.examples.map(u => `<li><a href="${escapeHTML(u)}" target="_blank" rel="noopener">${escapeHTML(u)}</a></li>`).join('')}</ul>` : ''}
+        ${d.progress.length > 0 ? `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin:12px 0 6px;">Crawl progression (every 25 fetches)</div>
+          <table class="error-table"><thead><tr><th>Crawled</th><th>Queue</th><th>Kept</th><th>Excluded</th><th>Current</th></tr></thead>
+          <tbody>${d.progress.slice(-15).map(p => `<tr><td>${p.crawled}</td><td>${p.queue}</td><td>${p.kept}</td><td>${p.excluded}</td><td>${escapeHTML(p.current)}</td></tr>`).join('')}</tbody></table>
+          ${d.progress.length > 15 ? `<div style="font-size:10px;color:var(--muted);margin-top:4px;">Showing last 15 of ${d.progress.length} progress checkpoints.</div>` : ''}` : ''}
+      </div>
+    </div>`;
+  });
+
+  return html;
+}
+
+// ---------- SCRAPE VIEW ----------
+const CAT_LABELS = {
+  junk_title: "Junk title (silent 404s)",
+  duplicate: "Duplicate content",
+  empty_text: "Empty page text",
+  auth_utility: "Auth or utility page",
+  http_404: "HTTP 404",
+  http_403: "HTTP 403",
+  http_401: "HTTP 401",
+  http_503: "HTTP 503",
+  network: "Network error (DNS / timeout)",
+  other: "Other",
+};
+
+// Categories that represent the filter doing its job vs real fetch failures
+const FILTER_CATS = new Set(['junk_title', 'duplicate', 'empty_text', 'auth_utility']);
+const FAILURE_CATS = new Set(['http_404', 'http_403', 'http_401', 'http_400', 'http_500', 'http_503', 'network']);
+
+function classifyOutcome(category) {
+  if (FILTER_CATS.has(category)) return 'filtered';
+  if (FAILURE_CATS.has(category)) return 'failed';
+  return 'other';
+}
+
+function bucketDomain(d) {
+  let filtered = 0, failed = 0, other = 0;
+  d.error_samples.forEach(s => {
+    const o = classifyOutcome(s.category);
+    if (o === 'filtered') filtered++;
+    else if (o === 'failed') failed++;
+    else other++;
+  });
+  return { filtered, failed, other };
+}
+
+function renderScrape(data) {
+  const t = data.totals;
+
+  // Recompute totals using the three-bucket model
+  let totalFiltered = 0, totalFailed = 0, totalOther = 0;
+  data.domains.forEach(d => {
+    const b = bucketDomain(d);
+    totalFiltered += b.filtered;
+    totalFailed += b.failed;
+    totalOther += b.other;
+  });
+  // Effective success rate: of pages we actually wanted to read, how many gave us text?
+  const fetchable = t.pages_scraped + totalFailed;
+  const effective = fetchable > 0 ? Math.round(t.pages_scraped / fetchable * 100) : 0;
+
+  let html = renderKPIs([
+    { label: "Pages scraped", value: fmt(t.pages_scraped), sub: "usable text extracted", tone: 'good' },
+    { label: "Filtered out", value: fmt(totalFiltered), sub: "scraper correctly skipped", tone: '' },
+    { label: "Fetch failures", value: fmt(totalFailed), sub: "HTTP errors and network", tone: totalFailed > 500 ? 'bad' : 'warn' },
+    { label: "Effective rate", value: effective + "%", sub: "scraped / fetchable", tone: effective > 70 ? 'good' : effective > 40 ? 'warn' : 'bad' },
+  ]);
+
+  // Filter outcomes (good catches)
+  const cats = data.error_categories || {};
+  const filterEntries = Object.entries(cats).filter(([c]) => FILTER_CATS.has(c)).sort((a, b) => b[1] - a[1]);
+  const failureEntries = Object.entries(cats).filter(([c]) => FAILURE_CATS.has(c)).sort((a, b) => b[1] - a[1]);
+  const otherEntries = Object.entries(cats).filter(([c]) => !FILTER_CATS.has(c) && !FAILURE_CATS.has(c)).sort((a, b) => b[1] - a[1]);
+
+  if (filterEntries.length > 0) {
+    const max = Math.max(...filterEntries.map(e => e[1]), 1);
+    html += `<h2>Filter activity <span class="small">${fmt(totalFiltered)} pages correctly skipped</span></h2>`;
+    html += renderBars(
+      filterEntries.map(([cat, n]) => ({ label: CAT_LABELS[cat] || cat, value: n, cat })),
+      max,
+      () => 'ok'
+    );
+  }
+
+  if (failureEntries.length > 0) {
+    const max = Math.max(...failureEntries.map(e => e[1]), 1);
+    html += `<h2>Fetch failures <span class="small">${fmt(totalFailed)} pages the scraper could not read</span></h2>`;
+    html += renderBars(
+      failureEntries.map(([cat, n]) => ({ label: CAT_LABELS[cat] || cat, value: n, cat })),
+      max,
+      () => 'error'
+    );
+  }
+
+  if (otherEntries.length > 0) {
+    const max = Math.max(...otherEntries.map(e => e[1]), 1);
+    html += `<h2>Other <span class="small">uncategorized</span></h2>`;
+    html += renderBars(
+      otherEntries.map(([cat, n]) => ({ label: CAT_LABELS[cat] || cat, value: n, cat })),
+      max,
+      () => ''
+    );
+  }
+
+  // Per-domain
+  html += `<h2>By Domain</h2>`;
+  data.domains.forEach((d, idx) => {
+    const b = bucketDomain(d);
+    const fetchableD = d.scraped + b.failed;
+    const effPct = fetchableD > 0 ? Math.round(d.scraped / fetchableD * 100) : 0;
+    html += `<div class="domain-card">
+      <div class="domain-head">
+        <div class="domain-name">${escapeHTML(d.name)}</div>
+        <div class="domain-stats">
+          <span>Pages: <span class="num">${fmt(d.page_count)}</span></span>
+          <span>Scraped: <span class="num good">${fmt(d.scraped)}</span></span>
+          <span>Filtered: <span class="num">${fmt(b.filtered)}</span></span>
+          <span>Failed: <span class="num ${b.failed > 0 ? 'bad' : ''}">${fmt(b.failed)}</span></span>
+          ${fetchableD > 0 ? `<span>Effective: <span class="num ${effPct > 70 ? 'good' : effPct > 40 ? 'warn' : 'bad'}">${effPct}%</span></span>` : ''}
+        </div>
+      </div>
+      ${d.error_samples.length > 0 ? `<button class="detail-toggle" onclick="document.getElementById('det-${idx}').classList.toggle('open')">Toggle ${d.error_samples.length} error sample${d.error_samples.length === 1 ? '' : 's'}</button>
+      <div id="det-${idx}" class="detail-body">
+        <table class="error-table">
+          <thead><tr><th class="cat-cell">Category</th><th>URL</th><th>Reason</th></tr></thead>
+          <tbody>${d.error_samples.map(s => `<tr>
+            <td class="cat-cell"><span class="cat-pill cat-${escapeHTML(s.category)}">${escapeHTML(s.category)}</span></td>
+            <td><a href="${escapeHTML(s.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">${escapeHTML(s.url)}</a></td>
+            <td>${escapeHTML(s.reason.length > 100 ? s.reason.slice(0, 100) + '...' : s.reason)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>` : ''}
+    </div>`;
+  });
+
+  // Search panel
+  html += `<h2>Search Errors <span class="small">across all domains</span></h2>
+    <div class="search-section">
+      <input type="text" class="search" id="search" placeholder="Search by URL or reason...">
+      <div class="search-results" id="search-results"></div>
+    </div>`;
+  return html;
+}
+
+// ---------- INIT ----------
+document.getElementById('content').innerHTML = VIEW_TYPE === 'map' ? renderMap(DATA) : renderScrape(DATA);
+document.getElementById('run-date').textContent = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+document.getElementById('gen-date').textContent = new Date().toLocaleString();
+
+// Wire up search if present
+const searchEl = document.getElementById('search');
+if (searchEl && VIEW_TYPE === 'scrape') {
+  const allErrors = [];
+  DATA.domains.forEach(d => {
+    d.error_samples.forEach(s => allErrors.push({ ...s, domain: d.name }));
+  });
+  const resultsEl = document.getElementById('search-results');
+  function updateSearch() {
+    const q = searchEl.value.trim().toLowerCase();
+    if (!q) { resultsEl.innerHTML = `<div style="color:var(--muted);font-style:italic;">Type to search ${allErrors.length.toLocaleString()} error entries...</div>`; return; }
+    const hits = allErrors.filter(e =>
+      e.url.toLowerCase().includes(q) || e.reason.toLowerCase().includes(q) || e.category.includes(q) || e.domain.toLowerCase().includes(q)
+    ).slice(0, 200);
+    resultsEl.innerHTML = hits.length === 0
+      ? `<div style="color:var(--muted);font-style:italic;">No matches.</div>`
+      : `<div style="color:var(--muted);margin-bottom:8px;">${hits.length}${hits.length === 200 ? '+' : ''} matches</div>` +
+        hits.map(h => `<div class="hit">
+          <span class="hit-cat">[${escapeHTML(h.category)}]</span>
+          <a href="${escapeHTML(h.url)}" target="_blank" rel="noopener">${escapeHTML(h.url)}</a>
+          <div style="color:var(--ink-soft);margin-top:2px;font-size:10px;">${escapeHTML(h.reason.length > 150 ? h.reason.slice(0, 150) + '...' : h.reason)}</div>
+        </div>`).join('');
+  }
+  searchEl.addEventListener('input', updateSearch);
+  updateSearch();
+}
+</script>
+</body>
+</html>

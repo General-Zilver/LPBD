@@ -176,7 +176,11 @@ def _remove_old_domain_files(domain_url, output_dir):
     host = urlparse(domain_url).netloc.replace(".", "_")
     output_dir = Path(output_dir)
     for old_file in output_dir.glob(f"scraped_{host}_*.txt"):
-        old_file.unlink()
+        try:
+            old_file.unlink()
+        except OSError as exc:
+            # OneDrive/AV can briefly lock files; stale files are harmless.
+            print(f"  Warning: could not remove old file {old_file.name}: {exc}")
 
 
 

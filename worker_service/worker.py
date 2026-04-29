@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import re
 import time
 from typing import Any, Dict, List, Tuple
@@ -43,7 +44,11 @@ def _normalize_text(html_text: str) -> str:
         if el.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
             continue
 
-        cls = el.get("class")
+        attrs = getattr(el, "attrs", None)
+        if not isinstance(attrs, dict):
+            continue
+
+        cls = attrs.get("class")
         if cls is not None:
             if isinstance(cls, str):
                 cls = [cls]
@@ -52,7 +57,7 @@ def _normalize_text(html_text: str) -> str:
                 el.decompose()
                 continue
 
-        el_id = el.get("id")
+        el_id = attrs.get("id")
         if el_id is not None:
             id_lower = el_id.lower()
             if any(p in id_lower for p in _SITE_CHROME_PATTERNS):
@@ -183,6 +188,11 @@ def get_or_build_pack(
     now = time.time()
     purge_expired_packs(now)
 
+    # Ignore broken global proxy env vars by default (can be re-enabled with LPBD_USE_ENV_PROXY=1).
+    use_env_proxy = os.getenv("LPBD_USE_ENV_PROXY", "").strip().lower() in {"1", "true", "yes"}
+    session = requests.Session()
+    session.trust_env = use_env_proxy
+
     if not force_refresh:
         cached = get_pack(domain)
         if cached:
@@ -217,7 +227,7 @@ def get_or_build_pack(
             )
 
             try:
-                response = requests.get(url, headers=headers, timeout=timeout_s)
+                response = session.get(url, headers=headers, timeout=timeout_s)
             except requests.RequestException as exc:
                 errors.append({"url": url, "error": str(exc)})
                 continue
@@ -239,7 +249,7 @@ def get_or_build_pack(
                     continue
                 # New clients still need content when shared weekly pack is missing.
                 try:
-                    response = requests.get(url, timeout=timeout_s)
+                    response = session.get(url, timeout=timeout_s)
                 except requests.RequestException as exc:
                     errors.append({"url": url, "error": str(exc)})
                     continue
@@ -300,4 +310,5 @@ def get_or_build_pack(
 
         return False, pack_pages, unchanged_urls, errors
     finally:
+        session.close()
         release_domain_lock(domain)

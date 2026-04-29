@@ -17,3 +17,9 @@ logs/
 test_worker.py
 worker_state.db
 native_host_debug.log
+sqlite_test_root.db
+sqlite_test_root.db-journal
+worker_service/worker_state.db-journal
+worker_service/worker_state_test.db
+worker_service/worker_state_test.db-journal
+worker_service/write_test.txt
