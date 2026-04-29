@@ -348,6 +348,33 @@ def _coerce_list(value):
     return []
 
 
+def _coerce_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        parts = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                parts.append(text)
+        return " ".join(parts)
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            key_text = str(key).strip()
+            item_text = str(item).strip()
+            if key_text and item_text:
+                parts.append(f"{key_text}: {item_text}")
+            elif key_text:
+                parts.append(key_text)
+            elif item_text:
+                parts.append(item_text)
+        return " ".join(parts)
+    return str(value)
+
+
 def _filter_inferred_from(raw_value, profile_text, profile_signals_text):
     source_blob = _normalize_free_text(
         " ".join([profile_text or "", profile_signals_text or ""])
@@ -418,13 +445,13 @@ def to_match_result(raw, url, title, source_type, pipeline_run_id, profile_text=
         page_title=title,
         source_type=source_type,
         relevance_score=score,
-        benefit_name=raw.get("benefit_name") or "",
+        benefit_name=_coerce_text(raw.get("benefit_name")),
         action=raw.get("action") or "be-aware",
-        summary=raw.get("summary") or "",
-        reasoning=raw.get("reasoning") or "",
-        action_details=raw.get("action_details") or "",
-        evidence_quote=raw.get("evidence_quote") or "",
-        evidence_type=raw.get("evidence_type") or "",
+        summary=_coerce_text(raw.get("summary")),
+        reasoning=_coerce_text(raw.get("reasoning")),
+        action_details=_coerce_text(raw.get("action_details")),
+        evidence_quote=_coerce_text(raw.get("evidence_quote")),
+        evidence_type=_coerce_text(raw.get("evidence_type")),
         eligibility_status=eligibility_status,
         match_type=match_type,
         cross_references=[],

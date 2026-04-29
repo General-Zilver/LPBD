@@ -2,10 +2,11 @@ import json
 import sqlite3
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-DB_PATH = Path(__file__).with_name("worker_state.db")
+from .state_db import get_worker_db_path
+
+DB_PATH = get_worker_db_path()
 
 
 # Open the shared SQLite database and ensure the pack cache table exists.

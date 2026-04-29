@@ -1,9 +1,10 @@
 import sqlite3
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional
 
-DB_PATH = Path(__file__).with_name("worker_state.db")
+from .state_db import get_worker_db_path
+
+DB_PATH = get_worker_db_path()
 
 
 # Open the shared SQLite database and ensure metadata table exists.

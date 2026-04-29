@@ -442,21 +442,48 @@ Return JSON only.
 
 # -- hard eligibility gate -------------------------------------------------
 
+def _coerce_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        parts = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                parts.append(text)
+        return " ".join(parts)
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            key_text = str(key).strip()
+            item_text = str(item).strip()
+            if key_text and item_text:
+                parts.append(f"{key_text}: {item_text}")
+            elif key_text:
+                parts.append(key_text)
+            elif item_text:
+                parts.append(item_text)
+        return " ".join(parts)
+    return str(value)
+
+
 def _match_text_blob(match):
     return " ".join([
-        match.benefit_name or "",
-        match.summary or "",
-        match.reasoning or "",
-        match.action_details or "",
-        match.evidence_quote or "",
+        _coerce_text(getattr(match, "benefit_name", "")),
+        _coerce_text(getattr(match, "summary", "")),
+        _coerce_text(getattr(match, "reasoning", "")),
+        _coerce_text(getattr(match, "action_details", "")),
+        _coerce_text(getattr(match, "evidence_quote", "")),
     ]).lower()
 
 
 def _match_identity_blob(match):
     return " ".join([
-        match.benefit_name or "",
-        match.page_title or "",
-        match.page_url or "",
+        _coerce_text(getattr(match, "benefit_name", "")),
+        _coerce_text(getattr(match, "page_title", "")),
+        _coerce_text(getattr(match, "page_url", "")),
     ]).lower()
 
 
