@@ -23,3 +23,4 @@ worker_service/worker_state.db-journal
 worker_service/worker_state_test.db
 worker_service/worker_state_test.db-journal
 worker_service/write_test.txt
+STUDY_GUIDE.md
