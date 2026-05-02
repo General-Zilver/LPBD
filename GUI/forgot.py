@@ -1,4 +1,6 @@
 import customtkinter as ctk
+from auth import reset_token
+from forgot_pass import reset_email_link
 
 class ForgotPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -72,8 +74,13 @@ class ForgotPage(ctk.CTkFrame):
 
     def send_reset(self):
         email = self.email_entry.get()
-        print(f"Reset link requested for {email}")
-        # later you can implement actual reset logic here
+
+        token = reset_token(email)
+        if token:
+            reset_email_link(email, token)
+            print("Reset link sent")
+        else:
+            print("Email not found")
 
     def go_back(self):
         self.controller.show_page("login")
