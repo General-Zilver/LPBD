@@ -265,26 +265,26 @@ footer {
     </div>
     <div class="meta-block">
       <span class="count" id="visible-count">0</span>
-      of <span id="total-count">0</span> matched
+      <span id="count-label">Benefits found</span>
     </div>
   </header>
 
   <div class="controls">
-    <input type="text" class="search" id="search" placeholder="Search by name, summary, or source...">
     <div class="filter-row">
-      <div class="filter-group">
-        <div class="filter-label">Eligibility</div>
-        <div class="chips" id="eligibility-chips"></div>
-      </div>
       <div class="filter-group">
         <div class="filter-label">Match type</div>
         <div class="chips" id="matchtype-chips"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Eligibility</div>
+        <div class="chips" id="eligibility-chips"></div>
       </div>
       <div class="filter-group">
         <div class="filter-label">Tag</div>
         <div class="chips" id="tag-chips"></div>
       </div>
     </div>
+    <input type="text" class="search" id="search" placeholder="Search by name, summary, or source...">
   </div>
 
   <div class="summary-line">
@@ -311,9 +311,9 @@ const ELIGIBILITY_LABELS = {
 const MATCHTYPE_LABELS = {
   general_resource: 'General resource',
   aspirational: 'Aspirational',
-  needs_info: 'Needs info',
   not_likely: 'Not likely',
 };
+const MATCHTYPE_FILTER_VALUES = new Set(Object.keys(MATCHTYPE_LABELS));
 
 const state = {
   search: '',
@@ -321,6 +321,7 @@ const state = {
   matchtype: null,
   tag: null,
 };
+let chipOptions = null;
 
 function uniqueCounts(items, key) {
   const counts = {};
@@ -335,13 +336,13 @@ function uniqueCounts(items, key) {
   return counts;
 }
 
-function buildChips(containerId, counts, labelMap, stateKey) {
+function buildChips(containerId, keys, counts, labelMap, stateKey) {
   const container = document.getElementById(containerId);
   container.innerHTML = '';
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  entries.forEach(([key, count]) => {
+  keys.forEach(key => {
+    const count = counts[key] || 0;
     const chip = document.createElement('button');
-    chip.className = 'chip';
+    chip.className = 'chip' + (state[stateKey] === key ? ' active' : '');
     const label = labelMap ? (labelMap[key] || key) : key;
     chip.textContent = label + ' (' + count + ')';
     chip.dataset.value = key;
@@ -353,16 +354,46 @@ function buildChips(containerId, counts, labelMap, stateKey) {
   });
 }
 
-function passesFilters(item) {
-  if (state.eligibility && item.eligibility !== state.eligibility) return false;
-  if (state.matchtype && item.match_type !== state.matchtype) return false;
-  if (state.tag && !(item.tags || []).includes(state.tag)) return false;
+function passesFilters(item, skipKey) {
+  if (skipKey !== 'eligibility' && state.eligibility && item.eligibility !== state.eligibility) return false;
+  if (skipKey !== 'matchtype' && state.matchtype && item.match_type !== state.matchtype) return false;
+  if (skipKey !== 'tag' && state.tag && !(item.tags || []).includes(state.tag)) return false;
   if (state.search) {
     const q = state.search.toLowerCase();
     const hay = (item.name + ' ' + item.summary + ' ' + item.page_title + ' ' + (item.action_details || '')).toLowerCase();
     if (!hay.includes(q)) return false;
   }
   return true;
+}
+
+function sortedKeys(counts) {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([key]) => key);
+}
+
+function updateChips() {
+  buildChips(
+    'eligibility-chips',
+    chipOptions.eligibility,
+    uniqueCounts(DATA.filter(item => passesFilters(item, 'eligibility')), 'eligibility'),
+    ELIGIBILITY_LABELS,
+    'eligibility'
+  );
+  buildChips(
+    'matchtype-chips',
+    chipOptions.matchtype,
+    uniqueCounts(DATA.filter(item => passesFilters(item, 'matchtype') && MATCHTYPE_FILTER_VALUES.has(item.match_type)), 'match_type'),
+    MATCHTYPE_LABELS,
+    'matchtype'
+  );
+  buildChips(
+    'tag-chips',
+    chipOptions.tag,
+    uniqueCounts(DATA.filter(item => passesFilters(item, 'tag')), 'tags'),
+    null,
+    'tag'
+  );
 }
 
 function escapeHTML(s) {
@@ -374,6 +405,9 @@ function renderEntry(item, idx) {
   const eligClass = item.eligibility === 'likely_eligible' ? 'badge-eligible' : 'badge-needsinfo';
   const eligLabel = ELIGIBILITY_LABELS[item.eligibility] || item.eligibility;
   const tagBadges = (item.tags || []).map(t => `<span class="badge badge-tag">${escapeHTML(t)}</span>`).join('');
+  const matchTypeBadge = MATCHTYPE_FILTER_VALUES.has(item.match_type)
+    ? `<span class="badge badge-action">${escapeHTML(MATCHTYPE_LABELS[item.match_type] || item.match_type)}</span>`
+    : '';
   const actionBlock = item.action_details ? `
     <div class="entry-action">
       <strong>How to apply / next step</strong>
@@ -391,7 +425,7 @@ function renderEntry(item, idx) {
         ${actionBlock}
         <div class="badges">
           <span class="badge ${eligClass}">${escapeHTML(eligLabel)}</span>
-          <span class="badge badge-action">${escapeHTML(MATCHTYPE_LABELS[item.match_type] || item.match_type)}</span>
+          ${matchTypeBadge}
           ${tagBadges}
         </div>
       </div>
@@ -399,17 +433,13 @@ function renderEntry(item, idx) {
 }
 
 function render() {
-  // Update active chip states
-  document.querySelectorAll('#eligibility-chips .chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.value === state.eligibility));
-  document.querySelectorAll('#matchtype-chips .chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.value === state.matchtype));
-  document.querySelectorAll('#tag-chips .chip').forEach(c =>
-    c.classList.toggle('active', c.dataset.value === state.tag));
+  updateChips();
 
   const filtered = DATA.filter(passesFilters);
   document.getElementById('visible-count').textContent = filtered.length;
-  document.getElementById('total-count').textContent = DATA.length;
+  const pageCount = new Set(DATA.map(item => item.page_url).filter(Boolean)).size;
+  document.getElementById('count-label').textContent =
+    'Benefits found' + (pageCount ? ' from ' + pageCount + ' pages' : '');
 
   const list = document.getElementById('list');
   if (filtered.length === 0) {
@@ -433,9 +463,11 @@ function init() {
     new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   document.getElementById('footer-meta').textContent = DATA.length + ' Entries / Privacy-Preserving';
 
-  buildChips('eligibility-chips', uniqueCounts(DATA, 'eligibility'), ELIGIBILITY_LABELS, 'eligibility');
-  buildChips('matchtype-chips', uniqueCounts(DATA, 'match_type'), MATCHTYPE_LABELS, 'matchtype');
-  buildChips('tag-chips', uniqueCounts(DATA, 'tags'), null, 'tag');
+  chipOptions = {
+    eligibility: sortedKeys(uniqueCounts(DATA, 'eligibility')),
+    matchtype: sortedKeys(uniqueCounts(DATA.filter(item => MATCHTYPE_FILTER_VALUES.has(item.match_type)), 'match_type')),
+    tag: sortedKeys(uniqueCounts(DATA, 'tags')),
+  };
 
   document.getElementById('search').addEventListener('input', e => {
     state.search = e.target.value.trim();

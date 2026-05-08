@@ -13,6 +13,13 @@ def parse_map_log(lines: list[str]) -> dict:
     for line in lines:
         stripped = line.strip()
 
+        if stripped == "=== LPBD Domain Mapper ===":
+            domains = []
+            current_domain = None
+            in_examples = False
+            example_count = 0
+            continue
+
         # Domain start: "Mapping https://utrgv.edu..."
         m = re.match(r"Mapping (https?://(.+?))\.\.\.", stripped)
         if m:

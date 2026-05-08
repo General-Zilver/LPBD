@@ -43,6 +43,7 @@ class ChatPage(ctk.CTkFrame):
         # Load user profile and matched benefits for LLM context
         self.user_profile = self._load_answers()
         self.benefits_context = self._load_benefits()
+        self.pipeline_running = False
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -377,6 +378,11 @@ class ChatPage(ctk.CTkFrame):
         report_stage: str,
         report_file: str,
     ) -> None:
+        if self.pipeline_running:
+            self.add_message("[Pipeline] A pipeline step is already running.", sender="system")
+            return
+
+        self.pipeline_running = True
         self._set_pipeline_buttons_state(False)
         self.add_message(f"[{label}] Starting...", sender="system")
         log_path = PROJECT_ROOT / "logs" / _LOG_FILENAMES.get(
@@ -413,10 +419,11 @@ class ChatPage(ctk.CTkFrame):
         def reader():
             try:
                 log_file = None
-                try:
-                    log_file = open(log_path, "a", encoding="utf-8")
-                except OSError:
-                    pass
+                if report_stage != "map":
+                    try:
+                        log_file = open(log_path, "a", encoding="utf-8")
+                    except OSError:
+                        pass
                 for raw_line in proc.stdout:
                     line = raw_line.rstrip("\n")
                     if log_file:
@@ -578,6 +585,7 @@ class ChatPage(ctk.CTkFrame):
         except Exception as e:
             self.add_message(f"[{label}] Internal error: {e}", sender="system")
         finally:
+            self.pipeline_running = False
             self._set_pipeline_buttons_state(True)
 
     def run_map(self) -> None:
