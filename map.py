@@ -136,6 +136,31 @@ def _main_inner():
     if args.output.exists():
         with open(args.output) as f:
             data = json.load(f)
+
+        # Remove domains that produced 0 URLs from output and database
+        if isinstance(data.get("domains"), dict):
+            empty = [k for k, v in data["domains"].items() if len(v.get("urls", [])) == 0]
+            for k in empty:
+                del data["domains"][k]
+            if empty:
+                data["domain_count"] = len(data["domains"])
+                with open(args.output, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False)
+                print(f"\nPruned {len(empty)} domain(s) with 0 URLs: {', '.join(empty)}")
+
+                # Also remove them from the database so they are skipped next time
+                bare_domains = [url.replace("https://", "").replace("http://", "") for url in empty]
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    conn.executemany(
+                        "DELETE FROM web_history WHERE kind = 'domain' AND value = ?",
+                        [(d,) for d in bare_domains],
+                    )
+                    conn.commit()
+                    print(f"Removed {len(bare_domains)} empty domain(s) from {db_path.name}")
+                finally:
+                    conn.close()
+
         total_urls = sum(
             len(d.get("urls", [])) for d in data.get("domains", {}).values()
         )

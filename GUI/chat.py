@@ -2,14 +2,24 @@ import customtkinter as ctk
 from tkinter import filedialog
 from settings import SettingsOverlay
 import threading
+import queue
 import json
 import sys
+import os
 from pathlib import Path
 import subprocess
 
 # Add project root so we can import ollama_client
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 import ollama_client
+
+# Sentinel pushed to the line queue when the subprocess stream ends
+_STREAM_DONE = object()
+
+# Chat message caps
+_MAX_LINES = 25
+_MAX_CHARS = 2000
 
 
 class ChatPage(ctk.CTkFrame):
@@ -19,6 +29,11 @@ class ChatPage(ctk.CTkFrame):
         self.controller = controller
         self.conversation = []
         self.sending = False
+
+        Path("logs").mkdir(exist_ok=True)
+
+        # Pre-load the Ollama model in the background so the first chat/match is fast
+        threading.Thread(target=ollama_client.warmup, daemon=True).start()
 
         # Load user profile and matched benefits for LLM context
         self.user_profile = self._load_answers()
@@ -36,7 +51,7 @@ class ChatPage(ctk.CTkFrame):
         user = self.controller.session.get("username")
 
         candidates = [
-            Path(__file__).resolve().parent.parent / "answers.json",
+            PROJECT_ROOT / "answers.json",
             Path(__file__).resolve().parent / "answers.json",
         ]
 
@@ -65,26 +80,35 @@ class ChatPage(ctk.CTkFrame):
 
         return None
 
-    # Loads matched_benefits.json to give the LLM context about the user's benefits
-    def _load_benefits(self):
+    # Loads matched_benefits.json for LLM context
+    def _load_benefits(self) -> list[dict] | None:
         candidates = [
-            Path(__file__).resolve().parent.parent / "matched_benefits.json",
+            PROJECT_ROOT / "matched_benefits.json",
             Path(__file__).resolve().parent / "matched_benefits.json",
         ]
         for path in candidates:
             if path.exists():
                 try:
                     with open(path, "r", encoding="utf-8") as f:
-                        benefits = json.load(f)
-                    if benefits:
-                        summary = []
-                        for b in benefits[:20]:
-                            name = b.get("benefit_name", "Unknown")
-                            desc = b.get("description", "")
-                            summary.append(f"- {name}: {desc}")
-                        return "\n".join(summary)
-                except Exception:
-                    pass
+                        data = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+                # Envelope shape: {"results": [...], "last_updated": ..., ...}
+                if isinstance(data, dict) and "results" in data:
+                    results = data["results"]
+                elif isinstance(data, list):
+                    results = data
+                else:
+                    continue
+
+                if results:
+                    summary = []
+                    for b in results[:20]:
+                        name = b.get("benefit_name", "Unknown")
+                        desc = b.get("summary", b.get("description", ""))
+                        summary.append(f"- {name}: {desc}")
+                    return "\n".join(summary)
         return None
 
     # -----------------------
@@ -128,7 +152,7 @@ class ChatPage(ctk.CTkFrame):
             sender="system"
         )
 
-    def add_message(self, message, sender="user"):
+    def add_message(self, message: str, sender: str = "user") -> None:
 
         bubble = ctk.CTkFrame(self.chat_frame, corner_radius=15)
 
@@ -152,6 +176,23 @@ class ChatPage(ctk.CTkFrame):
         )
 
         label.pack(padx=15, pady=10)
+
+        self.chat_frame._parent_canvas.yview_moveto(1)
+
+    # Posts a bubble containing a clickable button (for report links)
+    def _add_report_button(self, report_file: str) -> None:
+        bubble = ctk.CTkFrame(self.chat_frame, corner_radius=15)
+        bubble.configure(fg_color="#3A3A3A")
+        bubble.pack(fill="none", padx=(10, 120), pady=6, anchor="w")
+
+        ctk.CTkButton(
+            bubble,
+            text=f"Open report: {report_file}",
+            command=lambda f=report_file: self._open_report(f),
+            fg_color="#2B7FFF",
+            hover_color="#1A5FCC",
+            width=260,
+        ).pack(padx=15, pady=10)
 
         self.chat_frame._parent_canvas.yview_moveto(1)
 
@@ -191,7 +232,7 @@ class ChatPage(ctk.CTkFrame):
             command=self.send_message
         )
         # MAP (Green)
-        map_btn = ctk.CTkButton(
+        self.map_btn = ctk.CTkButton(
             input_frame,
             text="Map",
             width=80,
@@ -199,10 +240,10 @@ class ChatPage(ctk.CTkFrame):
             hover_color="#006400",
             command=self.run_map
         )
-        map_btn.grid(row=0, column=0, padx=5, pady=10)
+        self.map_btn.grid(row=0, column=0, padx=5, pady=10)
 
         # SCRAPE (Yellow)
-        scrape_btn = ctk.CTkButton(
+        self.scrape_btn = ctk.CTkButton(
             input_frame,
             text="Scrape",
             width=80,
@@ -211,10 +252,10 @@ class ChatPage(ctk.CTkFrame):
             hover_color="#E6C200",
             command=self.run_scrape
         )
-        scrape_btn.grid(row=0, column=1, padx=5, pady=10)
+        self.scrape_btn.grid(row=0, column=1, padx=5, pady=10)
 
         # MATCH (Purple)
-        match_btn = ctk.CTkButton(
+        self.match_btn = ctk.CTkButton(
             input_frame,
             text="Match",
             width=80,
@@ -222,7 +263,7 @@ class ChatPage(ctk.CTkFrame):
             hover_color="#5A005A",
             command=self.run_match
         )
-        match_btn.grid(row=0, column=2, padx=5, pady=10)
+        self.match_btn.grid(row=0, column=2, padx=5, pady=10)
 
         send_btn.grid(row=0, column=5, padx=(5, 10), pady=10)
 
@@ -294,22 +335,217 @@ class ChatPage(ctk.CTkFrame):
         if file_path:
             self.add_message(f"Uploaded file:\n{file_path}", sender="system")
 
-    def run_map(self):
-        self.add_message("Running map.py...", sender="system")
-        threading.Thread(target=lambda: subprocess.run(["python", "map.py"]), daemon=True).start()
+    # -----------------------
+    # Pipeline Execution
+    # -----------------------
 
-    def run_scrape(self):
-        self.add_message("Running scrape_all.py...", sender="system")
-        threading.Thread(target=lambda: subprocess.run(["python", "scrape_all.py"]), daemon=True).start()
+    def _set_pipeline_buttons_state(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        for btn in (self.map_btn, self.scrape_btn, self.match_btn):
+            btn.configure(state=state)
 
-    def run_match(self):
+    def _open_report(self, filename: str) -> None:
+        path = Path(filename).resolve()
+        if not path.exists():
+            self.add_message(f"Report not found at {path}", sender="system")
+            return
+        if os.name == "nt":
+            os.startfile(str(path))
+        else:
+            import webbrowser
+            webbrowser.open(path.as_uri())
+
+    def run_pipeline_command(
+        self,
+        label: str,
+        command: list[str],
+        report_stage: str,
+        report_file: str,
+    ) -> None:
+        self._set_pipeline_buttons_state(False)
+        self.add_message(f"[{label}] Starting...", sender="system")
+
+        try:
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=str(PROJECT_ROOT),
+            )
+        except Exception as e:
+            self.add_message(f"[{label}] Failed to start: {e}", sender="system")
+            self._set_pipeline_buttons_state(True)
+            return
+
+        line_queue: queue.Queue = queue.Queue()
+        tail_buffer: list[str] = []
+
+        # Reader thread: reads stdout line by line, pushes to queue
+        def reader():
+            try:
+                for raw_line in proc.stdout:
+                    line = raw_line.rstrip("\n")
+                    line_queue.put(line)
+            except Exception:
+                pass
+            finally:
+                line_queue.put(_STREAM_DONE)
+
+        threading.Thread(target=reader, daemon=True).start()
+
+        # Polling loop on the main thread
+        def drain_queue():
+            if not self.winfo_exists():
+                self._set_pipeline_buttons_state(True)
+                return
+
+            batch: list[str] = []
+            done = False
+            while True:
+                try:
+                    item = line_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if item is _STREAM_DONE:
+                    done = True
+                    break
+                batch.append(item)
+                tail_buffer.append(item)
+
+            # Keep only last 10 lines for error reporting
+            if len(tail_buffer) > 10:
+                del tail_buffer[:-10]
+
+            if batch:
+                self._post_capped(label, batch, report_stage)
+
+            if done:
+                self._finish_pipeline_run(
+                    label, report_stage, report_file, proc, tail_buffer
+                )
+            else:
+                self.after(100, drain_queue)
+
+        self.after(100, drain_queue)
+
+    def _post_capped(self, label: str, lines: list[str], report_stage: str) -> None:
+        # Cap at _MAX_LINES lines and _MAX_CHARS characters
+        out: list[str] = []
+        char_count = 0
+        overflow = 0
+        for raw in lines:
+            prefixed = f"[{label}] {raw}"
+            if len(out) >= _MAX_LINES - 1 or char_count + len(prefixed) > _MAX_CHARS:
+                overflow = len(lines) - len(out)
+                break
+            out.append(prefixed)
+            char_count += len(prefixed) + 1  # +1 for newline
+
+        if overflow > 0:
+            out.append(f"... {overflow} more lines, see logs/{report_stage}.log")
+
+        self.add_message("\n".join(out), sender="system")
+
+    def _finish_pipeline_run(
+        self,
+        label: str,
+        report_stage: str,
+        report_file: str,
+        proc: subprocess.Popen,
+        tail_buffer: list[str],
+    ) -> None:
+        try:
+            proc.wait()
+            code = proc.returncode
+
+            if code == 0:
+                self.add_message(f"[{label}] Complete (exit 0).", sender="system")
+            else:
+                tail_text = "\n".join(tail_buffer[-10:])
+                self.add_message(
+                    f"[{label}] Failed (exit {code}). Last lines:\n{tail_text}",
+                    sender="system",
+                )
+
+            # Generate the HTML report via viewer.build
+            if code == 0:
+                try:
+                    viewer_result = subprocess.run(
+                        [sys.executable, "-m", "viewer.build", report_stage],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        cwd=str(PROJECT_ROOT),
+                    )
+                    if viewer_result.returncode != 0:
+                        self.add_message(
+                            f"[{label}] Report generation warning:\n{viewer_result.stderr}",
+                            sender="system",
+                        )
+                except Exception as e:
+                    self.add_message(
+                        f"[{label}] Could not generate report: {e}",
+                        sender="system",
+                    )
+
+                # Check for the report file and show a button to open it
+                report_path = PROJECT_ROOT / report_file
+                if report_path.exists():
+                    self._add_report_button(str(report_path))
+                else:
+                    self.add_message(
+                        f"[{label}] Report file not found: {report_file}",
+                        sender="system",
+                    )
+
+            # Reload benefits after a successful match run
+            if report_stage == "match" and code == 0:
+                self.benefits_context = self._load_benefits()
+                count = 0
+                bpath = PROJECT_ROOT / "matched_benefits.json"
+                if bpath.exists():
+                    try:
+                        with open(bpath, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if isinstance(data, dict) and "results" in data:
+                            count = len(data["results"])
+                        elif isinstance(data, list):
+                            count = len(data)
+                    except Exception:
+                        pass
+                self.add_message(
+                    f"[Match] Loaded {count} benefits into chat context.",
+                    sender="system",
+                )
+
+        except Exception as e:
+            self.add_message(f"[{label}] Internal error: {e}", sender="system")
+        finally:
+            self._set_pipeline_buttons_state(True)
+
+    def run_map(self) -> None:
+        self.run_pipeline_command(
+            label="Map",
+            command=[sys.executable, "map.py", "--max-pages", "50"],
+            report_stage="map",
+            report_file="map_report.html",
+        )
+
+    def run_scrape(self) -> None:
+        self.run_pipeline_command(
+            label="Scrape",
+            command=[sys.executable, "scrape_all.py"],
+            report_stage="scrape",
+            report_file="scrape_report.html",
+        )
+
+    def run_match(self) -> None:
         user = self.controller.session.get("username", "default_user")
-
-        self.add_message(f"Running match_it.py for user: {user}", sender="system")
-
-        threading.Thread(
-            target=lambda: subprocess.run(
-                ["python", "match_it.py", "--user", user]
-            ),
-            daemon=True
-        ).start()
+        self.run_pipeline_command(
+            label="Match",
+            command=[sys.executable, "match.py", "--user", user],
+            report_stage="match",
+            report_file="benefits.html",
+        )

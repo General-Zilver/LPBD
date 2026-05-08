@@ -358,8 +358,9 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
             queued.add(hub_url)
 
     pages_fetched = 0
-    links_kept = 0
+    links_new = 0
     links_excluded = 0
+    links_duplicate = 0
     domain_label = urlparse(base_url).netloc.replace("www.", "")
 
     while queue and (max_pages is None or pages_fetched < max_pages):
@@ -380,11 +381,14 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
         results.add(current_url)
 
         # Progress log every 25 pages so long crawls don't look hung.
+        # Found = total unique URLs in the result set so far (what ends up in the JSON).
+        # Excluded = links rejected by the junk filter. Dupes = links already seen.
         if pages_fetched % 25 == 0:
             short_path = (urlparse(current_url).path or "/")[:40]
             print(f"   [{domain_label}] Crawled {pages_fetched} | "
-                  f"Queue: {len(queue)} | Kept: {links_kept} | "
-                  f"Excluded: {links_excluded} | Current: {short_path}")
+                  f"Found: {len(results)} | Queue: {len(queue)} | "
+                  f"Excluded: {links_excluded} | Dupes: {links_duplicate} | "
+                  f"Current: {short_path}")
 
         new_links = extract_same_domain_links(
             base_url, resp.text, include_subdomains=include_subdomains
@@ -393,6 +397,7 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
         for link in new_links:
             # Skip if already fetched or already in queue.
             if link in visited or link in queued:
+                links_duplicate += 1
                 continue
             # Pre-filter junk so it never enters the queue or counts toward max_pages.
             if _is_excluded_url(link):
@@ -401,7 +406,7 @@ def bfs_crawl(base_url, preseed=None, session=None, include_subdomains=True,
             results.add(link)
             queue.append(link)
             queued.add(link)
-            links_kept += 1
+            links_new += 1
 
         if delay > 0:
             time.sleep(delay)

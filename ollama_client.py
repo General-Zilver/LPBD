@@ -121,6 +121,19 @@ def pull_model(model):
         raise TimeoutError("Model pull timed out after 10 minutes.")
 
 
+# Pre-loads a model into memory so the first real request is fast.
+# Sends a blank prompt with no output; Ollama loads the weights and returns immediately.
+def warmup(model=DEFAULT_MODEL):
+    try:
+        requests.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={"model": model, "prompt": "", "stream": False},
+            timeout=120,
+        )
+    except Exception:
+        pass
+
+
 # Tells Ollama to unload a model from memory immediately.
 # Sends a generate request with keep_alive=0 which triggers unload.
 def unload_model(model):
