@@ -3,6 +3,7 @@ import json
 import struct
 import logging
 import sqlite3
+from urllib.parse import urlparse
 
 # 1. Setup Logging
 logging.basicConfig(filename='native_host_debug.log', level=logging.DEBUG,
@@ -23,6 +24,17 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
+def normalize_domain(value):
+    raw = (value or "").strip().lower()
+    if not raw:
+        return ""
+    if "://" in raw:
+        host = urlparse(raw).netloc
+    else:
+        host = raw.split("/", 1)[0]
+    host = host.split("@")[-1].split(":", 1)[0]
+    return host[4:] if host.startswith("www.") else host
 
 def get_recent_history(limit=10):
     """Utility for the GUI team to fetch recent activity."""
@@ -72,11 +84,31 @@ try:
                 kind = item.get("kind")
                 value = item.get("value")
                 seen_at = item.get("seen_at")
-                
-                cursor.execute('''
-                    INSERT INTO web_history (request_id, kind, value, seen_at)
-                    VALUES (?, ?, ?, ?)
-                ''', (request_id, kind, value, seen_at))
+                if kind == "domain":
+                    value = normalize_domain(value)
+                    if not value:
+                        continue
+                    cursor.execute(
+                        '''
+                        UPDATE web_history
+                        SET request_id = ?, seen_at = ?
+                        WHERE kind = 'domain' AND value = ?
+                        ''',
+                        (request_id, seen_at, value),
+                    )
+                    if cursor.rowcount == 0:
+                        cursor.execute(
+                            '''
+                            INSERT INTO web_history (request_id, kind, value, seen_at)
+                            VALUES (?, ?, ?, ?)
+                            ''',
+                            (request_id, kind, value, seen_at),
+                        )
+                else:
+                    cursor.execute('''
+                        INSERT INTO web_history (request_id, kind, value, seen_at)
+                        VALUES (?, ?, ?, ?)
+                    ''', (request_id, kind, value, seen_at))
                 
                 logging.debug(f"Saved to DB - {kind}: {value}")
 

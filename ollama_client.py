@@ -3,10 +3,14 @@
 # matching pipeline embedder.
 
 import os
+import subprocess
+import time
+
 import requests
 
 OLLAMA_BASE = "http://localhost:11434"
 DEFAULT_MODEL = "llama3:8b"
+# DEFAULT_MODEL = "phi3:mini"
 EMBED_MODEL = "nomic-embed-text"
 # Default request timeout for generate/chat/embed calls.
 # Override with env var OLLAMA_TIMEOUT_SECONDS, e.g.:
@@ -35,7 +39,42 @@ def check_ollama(model=DEFAULT_MODEL):
 
     return True, None
 
-import time 
+
+def is_server_running():
+    try:
+        r = requests.get(OLLAMA_BASE, timeout=2)
+        return r.ok
+    except requests.RequestException:
+        return False
+
+
+def start_server(timeout=20):
+    if is_server_running():
+        return True, None
+
+    kwargs = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    try:
+        subprocess.Popen(["ollama", "serve"], **kwargs)
+    except FileNotFoundError:
+        return False, "Ollama command not found. Install Ollama or add it to PATH."
+    except Exception as exc:
+        return False, f"Could not start Ollama: {exc}"
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if is_server_running():
+            return True, None
+        time.sleep(0.5)
+
+    return False, "Ollama did not become ready in time."
+
+
 # Sends a one-shot prompt to Ollama and returns the full response text.
 # Good for matching where there's no conversation history.
 # options is passed through to Ollama's generation options (for example num_thread).
@@ -119,6 +158,19 @@ def pull_model(model):
         raise ConnectionError("Ollama is not running. Start it with: ollama serve")
     except requests.Timeout:
         raise TimeoutError("Model pull timed out after 10 minutes.")
+
+
+# Pre-loads a model into memory so the first real request is fast.
+# Sends a blank prompt with no output; Ollama loads the weights and returns immediately.
+def warmup(model=DEFAULT_MODEL):
+    try:
+        requests.post(
+            f"{OLLAMA_BASE}/api/generate",
+            json={"model": model, "prompt": "", "stream": False},
+            timeout=120,
+        )
+    except Exception:
+        pass
 
 
 # Tells Ollama to unload a model from memory immediately.
