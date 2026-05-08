@@ -20,6 +20,11 @@ _STREAM_DONE = object()
 # Chat message caps
 _MAX_LINES = 25
 _MAX_CHARS = 2000
+_LOG_FILENAMES = {
+    "map": "map.log",
+    "scrape": "scrape_all.log",
+    "match": "match.log",
+}
 
 
 class ChatPage(ctk.CTkFrame):
@@ -177,7 +182,7 @@ class ChatPage(ctk.CTkFrame):
 
         label.pack(padx=15, pady=10)
 
-        self.chat_frame._parent_canvas.yview_moveto(1)
+        self._scroll_chat_to_bottom()
 
     # Posts a bubble containing a clickable button (for report links)
     def _add_report_button(self, report_file: str) -> None:
@@ -194,7 +199,17 @@ class ChatPage(ctk.CTkFrame):
             width=260,
         ).pack(padx=15, pady=10)
 
-        self.chat_frame._parent_canvas.yview_moveto(1)
+        self._scroll_chat_to_bottom()
+
+    def _scroll_chat_to_bottom(self) -> None:
+        def scroll() -> None:
+            if not self.winfo_exists():
+                return
+            self.chat_frame.update_idletasks()
+            self.chat_frame._parent_canvas.yview_moveto(1)
+
+        self.after_idle(scroll)
+        self.after(25, scroll)
 
     # -----------------------
     # Input Bar
@@ -364,6 +379,18 @@ class ChatPage(ctk.CTkFrame):
     ) -> None:
         self._set_pipeline_buttons_state(False)
         self.add_message(f"[{label}] Starting...", sender="system")
+        log_path = PROJECT_ROOT / "logs" / _LOG_FILENAMES.get(
+            report_stage,
+            f"{report_stage}.log",
+        )
+        log_path.parent.mkdir(exist_ok=True)
+        try:
+            log_path.write_text(
+                f"[{label}] Command: {' '.join(command)}\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
 
         try:
             proc = subprocess.Popen(
@@ -385,18 +412,31 @@ class ChatPage(ctk.CTkFrame):
         # Reader thread: reads stdout line by line, pushes to queue
         def reader():
             try:
+                log_file = None
+                try:
+                    log_file = open(log_path, "a", encoding="utf-8")
+                except OSError:
+                    pass
                 for raw_line in proc.stdout:
                     line = raw_line.rstrip("\n")
+                    if log_file:
+                        log_file.write(line + "\n")
+                        log_file.flush()
                     line_queue.put(line)
             except Exception:
                 pass
             finally:
+                if "log_file" in locals() and log_file:
+                    log_file.close()
                 line_queue.put(_STREAM_DONE)
 
         threading.Thread(target=reader, daemon=True).start()
 
         # Polling loop on the main thread
+        empty_polls_after_exit = 0
+
         def drain_queue():
+            nonlocal empty_polls_after_exit
             if not self.winfo_exists():
                 self._set_pipeline_buttons_state(True)
                 return
@@ -413,6 +453,13 @@ class ChatPage(ctk.CTkFrame):
                     break
                 batch.append(item)
                 tail_buffer.append(item)
+
+            if not done and not batch and proc.poll() is not None:
+                empty_polls_after_exit += 1
+                if empty_polls_after_exit >= 3:
+                    done = True
+            elif batch:
+                empty_polls_after_exit = 0
 
             # Keep only last 10 lines for error reporting
             if len(tail_buffer) > 10:
@@ -444,7 +491,8 @@ class ChatPage(ctk.CTkFrame):
             char_count += len(prefixed) + 1  # +1 for newline
 
         if overflow > 0:
-            out.append(f"... {overflow} more lines, see logs/{report_stage}.log")
+            log_name = _LOG_FILENAMES.get(report_stage, f"{report_stage}.log")
+            out.append(f"... {overflow} more lines written to logs/{log_name}")
 
         self.add_message("\n".join(out), sender="system")
 
@@ -471,6 +519,7 @@ class ChatPage(ctk.CTkFrame):
 
             # Generate the HTML report via viewer.build
             if code == 0:
+                report_built = False
                 try:
                     viewer_result = subprocess.run(
                         [sys.executable, "-m", "viewer.build", report_stage],
@@ -484,6 +533,8 @@ class ChatPage(ctk.CTkFrame):
                             f"[{label}] Report generation warning:\n{viewer_result.stderr}",
                             sender="system",
                         )
+                    else:
+                        report_built = True
                 except Exception as e:
                     self.add_message(
                         f"[{label}] Could not generate report: {e}",
@@ -492,11 +543,15 @@ class ChatPage(ctk.CTkFrame):
 
                 # Check for the report file and show a button to open it
                 report_path = PROJECT_ROOT / report_file
-                if report_path.exists():
+                if report_built and report_path.exists():
+                    self.add_message(
+                        f"[{label}] Report ready:\n{report_path}",
+                        sender="system",
+                    )
                     self._add_report_button(str(report_path))
                 else:
                     self.add_message(
-                        f"[{label}] Report file not found: {report_file}",
+                        f"[{label}] Report was not created: {report_file}",
                         sender="system",
                     )
 
@@ -528,7 +583,7 @@ class ChatPage(ctk.CTkFrame):
     def run_map(self) -> None:
         self.run_pipeline_command(
             label="Map",
-            command=[sys.executable, "map.py", "--max-pages", "50"],
+            command=[sys.executable, "map.py", "--max-pages", "15"],
             report_stage="map",
             report_file="map_report.html",
         )

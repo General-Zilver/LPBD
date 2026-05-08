@@ -27,17 +27,45 @@ DEFAULT_STATE = PROJECT_ROOT / "pipeline_state.json"
 
 # Loads answers for a specific user from answers.json.
 # Shared with match.py -- same lookup logic.
-def load_user_answers(username):
+def _load_answers_data():
     candidates = [
         PROJECT_ROOT / "answers.json",
         PROJECT_ROOT / "GUI" / "answers.json",
     ]
     for path in candidates:
         if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if username in data:
-                return data[username]
+            return json.loads(path.read_text(encoding="utf-8")), path
+    return {}, None
+
+
+def load_user_answers(username):
+    data, _path = _load_answers_data()
+    if username in data:
+        return data[username]
     return None
+
+
+def resolve_user_answers(username):
+    data, path = _load_answers_data()
+    if username in data:
+        return username, data[username]
+
+    if "default_user" in data:
+        print(
+            f"No answers found for user '{username}'. "
+            f"Using 'default_user' from {path.name}."
+        )
+        return "default_user", data["default_user"]
+
+    if len(data) == 1:
+        fallback_user, answers = next(iter(data.items()))
+        print(
+            f"No answers found for user '{username}'. "
+            f"Using only profile '{fallback_user}' from {path.name}."
+        )
+        return fallback_user, answers
+
+    return username, None
 
 
 # Runs the full matching pipeline: keyword filter -> match.
@@ -53,7 +81,7 @@ def run_matching_pipeline(
     num_threads=None,
     profile_keywords=True,
 ):
-    answers = load_user_answers(user)
+    resolved_user, answers = resolve_user_answers(user)
     if not answers:
         raise ValueError(
             f"No answers found for user '{user}'. "
@@ -67,7 +95,7 @@ def run_matching_pipeline(
         )
 
     envelope, _stats = run_pipeline(
-        user=user,
+        user=resolved_user,
         answers=answers,
         scraped_dir=s_dir,
         results_path=output or DEFAULT_RESULTS,
@@ -86,7 +114,7 @@ def run_matching_pipeline(
 # Fetches -> embeds (nomic) -> matches (phi3) -> saves results.
 # Returns a list of MatchResult objects.
 def run_single_page(user, url, model=None):
-    answers = load_user_answers(user)
+    _resolved_user, answers = resolve_user_answers(user)
     if not answers:
         raise ValueError(
             f"No answers found for user '{user}'. "
