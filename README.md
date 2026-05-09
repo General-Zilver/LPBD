@@ -16,7 +16,7 @@ End-to-end flow:
 2. Native host stores those items in a local SQLite DB.
 3. `map.py` discovers pages on each domain and writes `mapped_pages.json`.
 4. `scrape_all.py` scrapes mapped pages and writes text files into `scraped_output/`.
-5. `match.py` runs the multi-stage matching pipeline with Ollama and writes `matched_benefits.json`.
+5. `match.py` runs the multi-stage matching pipeline with Ollama and writes `matched_benefits.json`, `logs/match.log`, and an HTML report.
 6. GUI lets users fill questionnaire data and chat locally with the model.
 
 ## Repo Layout
@@ -28,7 +28,7 @@ End-to-end flow:
 - `matching/`: Multi-stage pipeline -- keyword filter, LLM matching, evidence validation, LLM verification, keyword fallback detection, profile signals, and cross-referencing.
 - `GUI/`: Desktop app (login/signup/questionnaire/chat/settings).
 - `map.py`, `scrape_all.py`, `match.py`: top-level pipeline controllers.
-- `match_it.py`: test/debug runner (same pipeline, prints reports to console only).
+- `match_it.py`: test/debug runner (same pipeline, prints detailed reports to console).
 - `ollama_client.py`: shared REST wrapper for local Ollama server.
 - `domains.py`: CLI utility to inspect/clear the native host DB.
 - `custom_pages.py`: CLI to manage user-added custom page URLs.
@@ -119,7 +119,7 @@ python scrape_all.py
 python match.py --user default_user
 ```
 
-`match.py` runs the full pipeline: keyword filter, LLM matching, evidence validation, pass-2 LLM verification, keyword fallback detection, deduplication, and cross-referencing. It uses both base keywords and profile-derived keywords by default.
+`match.py` runs the full pipeline: keyword filter, LLM matching, evidence validation, pass-2 LLM verification, keyword fallback detection, deduplication, and cross-referencing. It uses both base keywords and profile-derived keywords by default. A full run writes `benefits.html`; a single-page `--url` run writes `single_run.html`.
 
 Use `--no-profile-keywords` if you want base keywords only.
 Use `--no-verify-pass2` to skip the second LLM verification pass.
@@ -142,7 +142,7 @@ python GUI/start.py
 |---|---|---|---|
 | Domain map | `map.py` | `native_host/local_benefits.db` (or `local_benefits.db`) | `mapped_pages.json` |
 | Scrape | `scrape_all.py` | `mapped_pages.json`, `custom_pages.json` | `scraped_output/scraped_*.txt` |
-| Match | `match.py --user <username>` | `answers.json`, `scraped_output/`, `embeddings.json` | `pipeline_state.json`, `matched_benefits.json`, `embeddings.json` |
+| Match | `match.py --user <username>` | `answers.json`, `scraped_output/`, `embeddings.json` | `pipeline_state.json`, `matched_benefits.json`, `logs/match.log`, `benefits.html`, `embeddings.json` |
 
 ## Main Runtime Files
 
@@ -153,6 +153,9 @@ python GUI/start.py
 - `embeddings.json`: page embedding cache (nomic-embed-text vectors), used by both full pipeline and realtime mode.
 - `pipeline_state.json`: current/last pipeline stage metadata (supports resume).
 - `matched_benefits.json`: final results envelope (`results` list plus pipeline metadata).
+- `logs/match.log`: captured output from the latest `match.py` run.
+- `benefits.html`: HTML benefits report from a full `match.py` run.
+- `single_run.html`: HTML benefits report from a single-page `match.py --url ...` run.
 - `custom_pages.json`: user-added custom page URLs with status tracking (pending/scraped/error).
 - `institutions.json`: list of educational institutions for questionnaire dropdown.
 - `users.json`: user credentials for GUI login.

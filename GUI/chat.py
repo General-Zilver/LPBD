@@ -419,7 +419,7 @@ class ChatPage(ctk.CTkFrame):
         def reader():
             try:
                 log_file = None
-                if report_stage != "map":
+                if report_stage not in ("map", "match"):
                     try:
                         log_file = open(log_path, "a", encoding="utf-8")
                     except OSError:
