@@ -78,7 +78,8 @@ def start_server(timeout=20):
 # Sends a one-shot prompt to Ollama and returns the full response text.
 # Good for matching where there's no conversation history.
 # options is passed through to Ollama's generation options (for example num_thread).
-def generate(prompt, system=None, model=DEFAULT_MODEL, options=None, timeout=None):
+# format is passed through to Ollama's response formatter, e.g. "json".
+def generate(prompt, system=None, model=DEFAULT_MODEL, options=None, timeout=None, format=None):
     payload = {
         "model": model,
         "prompt": prompt,
@@ -88,6 +89,8 @@ def generate(prompt, system=None, model=DEFAULT_MODEL, options=None, timeout=Non
         payload["system"] = system
     if options:
         payload["options"] = options
+    if format:
+        payload["format"] = format
     req_timeout = timeout if timeout is not None else REQUEST_TIMEOUT_SECONDS
 
     try:

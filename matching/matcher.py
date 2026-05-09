@@ -520,6 +520,8 @@ def match_page(url, title, page_text, profile_text, profile_signals_text, hints_
             raw_benefits = parse_response_json(response)
 
             for raw in raw_benefits:
+                if not isinstance(raw, dict):
+                    continue
                 result = to_match_result(
                     raw, url, title, source_type, pipeline_run_id,
                     profile_text=profile_text,

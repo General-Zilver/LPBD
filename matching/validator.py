@@ -331,15 +331,107 @@ def _slice_page_text_for_verification(page_text, evidence_quote, max_words=1800)
     return " ".join(words[:max_words])
 
 
+def _candidate_json_objects(response_text):
+    text = str(response_text or "").strip()
+    if not text:
+        return []
+
+    # Common small-model wrapping around otherwise valid JSON.
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+
+    decoder = json.JSONDecoder()
+    candidates = []
+    for match in re.finditer(r"\{", text):
+        try:
+            data, _end = decoder.raw_decode(text[match.start():])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            candidates.append(data)
+    return candidates
+
+
+def _repair_verification_json_text(response_text):
+    text = str(response_text or "").strip()
+    if not text:
+        return ""
+
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        text = text[start:end + 1]
+    elif start == -1:
+        text = "{" + text + "}"
+
+    text = text.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    text = re.sub(
+        r"([{,]\s*)(valid|corrected_relevance_score|evidence_quote|reason)\s*:",
+        r'\1"\2":',
+        text,
+    )
+    text = re.sub(r"\bTrue\b", "true", text)
+    text = re.sub(r"\bFalse\b", "false", text)
+    text = re.sub(r"\bNone\b", "null", text)
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    return text
+
+
+def _parse_verification_line_fallback(response_text):
+    text = str(response_text or "").strip()
+    if not text:
+        return None
+
+    valid_match = re.search(r"\bvalid\b\s*[:=]\s*(true|false|yes|no|1|0)\b", text, flags=re.IGNORECASE)
+    if not valid_match:
+        return None
+    valid_token = valid_match.group(1).lower()
+    valid = valid_token in ("true", "yes", "1")
+
+    score = None
+    score_match = re.search(
+        r"\bcorrected_relevance_score\b\s*[:=]\s*(null|none|[1-5])\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if score_match and score_match.group(1).lower() not in ("null", "none"):
+        score = int(score_match.group(1))
+
+    evidence_quote = ""
+    evidence_match = re.search(
+        r"\bevidence_quote\b\s*[:=]\s*([^\r\n]+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if evidence_match:
+        evidence_quote = evidence_match.group(1).strip().strip('",')
+
+    reason = ""
+    reason_match = re.search(r"\breason\b\s*[:=]\s*([^\r\n]+)", text, flags=re.IGNORECASE)
+    if reason_match:
+        reason = reason_match.group(1).strip().strip('",')
+
+    return valid, evidence_quote, reason, score
+
+
 def _parse_verification_json(response_text):
-    start = response_text.find("{")
-    end = response_text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        data = json.loads(response_text[start:end + 1])
-    except json.JSONDecodeError:
-        return None
+    candidates = _candidate_json_objects(response_text)
+    if not candidates:
+        repaired = _repair_verification_json_text(response_text)
+        if repaired:
+            try:
+                data = json.loads(repaired)
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, dict):
+                candidates = [data]
+
+    if not candidates:
+        return _parse_verification_line_fallback(response_text)
+
+    data = candidates[0]
     if not isinstance(data, dict):
         return None
 
@@ -363,6 +455,30 @@ def _parse_verification_json(response_text):
             corrected_score = None
 
     return valid, evidence_quote, reason, corrected_score
+
+
+def _verification_options(llm_options):
+    options = dict(llm_options or {})
+    options.setdefault("temperature", 0)
+    return options
+
+
+def _generate_json_with_fallback(prompt, system, model, options):
+    try:
+        return ollama_client.generate(
+            prompt,
+            system=system,
+            model=model,
+            options=options,
+            format="json",
+        )
+    except Exception:
+        return ollama_client.generate(
+            prompt,
+            system=system,
+            model=model,
+            options=options,
+        )
 
 
 def verify_matches_with_llm(matches, scraped_lookup, profile_text, user_institution,
@@ -400,18 +516,19 @@ source_title: {page_title}
 SOURCE TEXT
 {page_slice}
 
-TASK
-Verify whether the candidate is explicitly supported by SOURCE TEXT and relevant to this specific student profile.
-If valid, confirm or correct the relevance_score using the scoring rubric.
-Return JSON only.
-""".strip()
+        TASK
+        Verify whether the candidate is explicitly supported by SOURCE TEXT and relevant to this specific student profile.
+        If valid, confirm or correct the relevance_score using the scoring rubric.
+        Return exactly one JSON object and no other text.
+        """.strip()
 
         try:
-            response = ollama_client.generate(
+            options = _verification_options(llm_options)
+            response = _generate_json_with_fallback(
                 prompt,
-                system=VERIFY_SYSTEM_PROMPT,
-                model=model,
-                options=llm_options,
+                VERIFY_SYSTEM_PROMPT,
+                model,
+                options,
             )
         except Exception as exc:
             match.rejection_reason = f"pass2 verification error: {exc}"
@@ -420,9 +537,37 @@ Return JSON only.
 
         parsed = _parse_verification_json(response)
         if not parsed:
-            match.rejection_reason = "pass2 invalid JSON response"
-            rejected.append(match)
-            continue
+            retry_prompt = f"""
+Return exactly this JSON schema and no other text:
+{{"valid":false,"corrected_relevance_score":null,"evidence_quote":"","reason":"short reason"}}
+
+Use valid=true only if SOURCE TEXT explicitly supports the CANDIDATE for this STUDENT PROFILE.
+
+STUDENT PROFILE
+{profile_text}
+
+CANDIDATE
+benefit_name: {match.benefit_name}
+summary: {match.summary}
+reasoning: {match.reasoning}
+claimed_evidence_quote: {match.evidence_quote}
+
+SOURCE TEXT
+{page_slice}
+""".strip()
+            try:
+                response = _generate_json_with_fallback(
+                    retry_prompt,
+                    "You return valid JSON only. No markdown. No explanation outside JSON.",
+                    model,
+                    options,
+                )
+                parsed = _parse_verification_json(response)
+            except Exception:
+                parsed = None
+
+        if not parsed:
+            parsed = (False, "", "verifier returned unparseable output", None)
 
         is_valid, evidence_quote, reason, corrected_score = parsed
         if not is_valid:
@@ -1406,7 +1551,17 @@ def hard_eligibility_gate(matches, answers, scraped_lookup, profile_signals=None
             continue
 
         signal_veteran = profile_signals.get("veteran")
-        if signal_veteran is False and _has_veteran_requirement(requirement_text):
+        match_specific_requirement_text = " ".join([
+            identity_blob,
+            _coerce_text(getattr(match, "summary", "")),
+            _coerce_text(getattr(match, "reasoning", "")),
+            _coerce_text(getattr(match, "action_details", "")),
+        ]).lower()
+        if (
+            signal_veteran is False
+            and _has_veteran_requirement(requirement_text)
+            and _has_veteran_requirement(match_specific_requirement_text)
+        ):
             _set_not_eligible(match, "profile contradicts veteran or military requirement")
             _log_profile_signal_decision(
                 match,
@@ -1745,6 +1900,16 @@ def hard_eligibility_gate(matches, answers, scraped_lookup, profile_signals=None
                         "This page provides food and basic-needs support for students, "
                         "and the profile includes basic-needs indicators."
                     )
+                elif (
+                    profile_signals.get("food_insecurity") is False
+                    or profile_signals.get("has_meal_plan") is True
+                ):
+                    _set_not_eligible(
+                        match,
+                        "profile does not support food-insecurity or meal-swipe need",
+                    )
+                    rejected.append(match)
+                    continue
                 else:
                     _set_general_resource(match, score_cap=3)
                     match.reasoning = (
@@ -2260,6 +2425,23 @@ def _extract_evidence_sentence(page_text, keyword):
     return keyword
 
 
+def _extract_evidence_window(page_text, keyword, radius=120):
+    text = str(page_text or "")
+    lower = text.lower()
+    keyword_lower = str(keyword or "").lower()
+    idx = lower.find(keyword_lower)
+    if idx < 0:
+        return _extract_evidence_sentence(page_text, keyword)
+    start = max(0, idx - radius)
+    end = min(len(text), idx + len(keyword_lower) + radius)
+    snippet = text[start:end].strip()
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(text):
+        snippet = snippet + "..."
+    return snippet
+
+
 _INCIDENTAL_MENTION_PHRASES = [
     "may combine with",
     "can be combined with",
@@ -2307,6 +2489,8 @@ def _generic_name_is_subject_level(generic_name, title, url):
 def _choose_keyword_candidate_benefit_name(hit, title, url):
     canonical = _canonical_page_benefit_name(title, url)
     detected_name = str(hit.get("benefit_name") or "").strip()
+    if hit.get("prefer_detected_name") and detected_name:
+        return detected_name
     if detected_name and _generic_name_is_subject_level(detected_name, title, url):
         return detected_name
     return canonical or detected_name or (url or "")
@@ -2586,6 +2770,213 @@ def _detect_tuition_assistance(url, title, page_text, answers, profile_signals=N
     }
 
 
+def _detect_nonresident_tuition_waiver(url, title, page_text, answers, profile_signals=None):
+    lower = page_text.lower()
+    mentions_nonresident = _contains_any(lower, [
+        "out-of-state",
+        "out of state",
+        "nonresident",
+        "non-resident",
+        "non-residents",
+    ])
+    mentions_resident_rate = _contains_any(lower, [
+        "pay in-state tuition",
+        "pay the resident tuition",
+        "resident tuition and mandatory fee rate",
+        "in-state tuition",
+        "reduces the nonresident tuition rate",
+        "reduces nonresident tuition rate",
+        "nonresident tuition rate",
+        "nonresident merit waiver",
+    ])
+    mentions_waiver = _contains_any(lower, [
+        "waiver",
+        "waiver programs",
+        "competitive scholarship waiver",
+    ])
+    if not (mentions_nonresident and mentions_resident_rate and mentions_waiver):
+        return None
+
+    out_of_state = None
+    national_merit = None
+    if isinstance(profile_signals, dict):
+        out_of_state = profile_signals.get("out_of_state")
+        national_merit = profile_signals.get("national_merit")
+    residency_answer = _get_answer(answers, "residency status")
+    scholarship_answer = _get_answer(answers, "receiving any scholarships")
+    scholarship_amount = _get_answer(answers, "total annual scholarship amount")
+    has_scholarship = (
+        national_merit is True
+        or _answer_contains_any(scholarship_answer, ["yes", "scholarship", "national merit"])
+        or _answer_contains_any(scholarship_amount, ["$", "1000", "1,000"])
+    )
+
+    if out_of_state is not True and not _answer_contains_any(
+        residency_answer,
+        ["out-of-state", "out of state", "nonresident", "non-resident"],
+    ):
+        return None
+
+    keyword = "out-of-state"
+    if "nonresident" in lower:
+        keyword = "nonresident"
+    elif "non-resident" in lower:
+        keyword = "non-resident"
+
+    inferred_from = [
+        "What is your residency status?(In-state/ Out-of-state/ International)",
+    ]
+    if has_scholarship:
+        inferred_from.extend([
+            "Are you currently receiving any scholarships?",
+            "If yes, what is the total annual scholarship amount?",
+        ])
+
+    return {
+        "benefit_name": "Nonresident Tuition Waiver",
+        "action": "apply" if has_scholarship else "review",
+        "tags": ["tuition", "waiver", "scholarship"],
+        "summary": (
+            f"{title or url} mentions waiver programs that can let out-of-state "
+            "or nonresident students pay an in-state/resident tuition rate."
+        ),
+        "reasoning": (
+            f"Detected by keyword matching: '{keyword}' plus resident tuition and waiver "
+            "language found on page; relevant because the profile is out-of-state"
+            + (" and includes a scholarship signal." if has_scholarship else ".")
+        ),
+        "detected_keyword": keyword,
+        "evidence_quote": _extract_evidence_window(page_text, keyword),
+        "evidence_type": "deterministic-profile-signal",
+        "inferred_from": inferred_from,
+        "prefer_detected_name": True,
+        "skip_subject_level_check": True,
+        "eligibility_status": "likely_eligible" if has_scholarship else "needs_info",
+        "match_type": "direct_match" if has_scholarship else "needs_info",
+        "allow_relevance_score": True,
+        "relevance_score": 5 if has_scholarship else 3,
+    }
+
+
+def _detect_honors_research_travel_grant(url, title, page_text, answers, profile_signals=None):
+    lower = page_text.lower()
+    if not _contains_any(lower, [
+        "honors research and study travel mini-grant",
+        "honors research and study travel mini grant",
+        "research travel mini-grant",
+        "study travel mini-grant",
+    ]):
+        return None
+
+    honors = None
+    full_time = None
+    gpa = None
+    student = None
+    if isinstance(profile_signals, dict):
+        honors = profile_signals.get("honors")
+        full_time = profile_signals.get("full_time")
+        gpa = profile_signals.get("gpa")
+        student = profile_signals.get("student")
+
+    if honors is not True:
+        other = _get_answer(answers, "anything else")
+        aware_honors = _get_answer(answers, "departmental scholarships")
+        if not _answer_contains_any(f"{other} {aware_honors}", ["honors"]):
+            return None
+    if full_time is False or student is False:
+        return None
+    if gpa is not None and gpa < 3.5:
+        return None
+
+    return {
+        "benefit_name": "Honors Research and Study Travel Mini-Grant",
+        "action": "review",
+        "tags": ["grant", "scholarship", "financial-aid"],
+        "summary": (
+            f"{title or url} helps UTRGV Honors College students pay for approved "
+            "academic travel such as study abroad, research conferences, and pre-health enrichment."
+        ),
+        "reasoning": (
+            "Detected by profile-aware keyword matching: the profile indicates Honors College, "
+            "full-time enrollment, 4.0 GPA, and interest in study abroad/pre-health travel."
+        ),
+        "detected_keyword": "honors",
+        "evidence_quote": _extract_evidence_window(page_text, "Honors Research"),
+        "evidence_type": "deterministic-profile-signal",
+        "inferred_from": [
+            "Are you enrolled full-time or part-time?",
+            "What is your current GPA?",
+            "Is there anything else about your situation that you think might be relevant to finding benefits? (open text field)",
+        ],
+        "prefer_detected_name": True,
+        "skip_subject_level_check": True,
+        "eligibility_status": "likely_eligible",
+        "match_type": "direct_match",
+        "allow_relevance_score": True,
+        "relevance_score": 5,
+    }
+
+
+def _detect_residence_life_sports_leadership(url, title, page_text, answers, profile_signals=None):
+    lower = page_text.lower()
+    if not _contains_any(lower, [
+        "residence life sports leadership stipend",
+        "sports leadership stipend",
+        "intramural leagues",
+        "residence hall fitness challenges",
+    ]):
+        return None
+
+    on_campus = None
+    full_time = None
+    gpa = None
+    if isinstance(profile_signals, dict):
+        on_campus = profile_signals.get("on_campus")
+        full_time = profile_signals.get("full_time")
+        gpa = profile_signals.get("gpa")
+
+    housing_answer = _get_answer(answers, "live on campus")
+    if on_campus is not True and not _answer_contains_any(housing_answer, ["on campus", "dorm", "campus housing"]):
+        return None
+    if full_time is False:
+        return None
+    if gpa is not None and gpa < 3.0:
+        return None
+
+    other = _get_answer(answers, "anything else")
+    leadership_signal = _answer_contains_any(other, ["intramural", "sports leadership", "leadership"])
+
+    return {
+        "benefit_name": "Residence Life Sports Leadership Stipend",
+        "action": "review",
+        "tags": ["housing", "student-support", "employment"],
+        "summary": (
+            f"{title or url} offers a stipend for on-campus students who help organize "
+            "intramural, residence hall fitness, and peer wellness events."
+        ),
+        "reasoning": (
+            "Detected by profile-aware keyword matching: the profile indicates on-campus housing, "
+            "full-time enrollment, GPA above the requirement"
+            + (", and stated interest in intramural sports leadership." if leadership_signal else ".")
+        ),
+        "detected_keyword": "sports leadership stipend",
+        "evidence_quote": _extract_evidence_window(page_text, "Sports Leadership Stipend"),
+        "evidence_type": "deterministic-profile-signal",
+        "inferred_from": [
+            "Do you live on campus, off campus, or with family?",
+            "Are you enrolled full-time or part-time?",
+            "What is your current GPA?",
+            "Is there anything else about your situation that you think might be relevant to finding benefits? (open text field)",
+        ],
+        "prefer_detected_name": True,
+        "skip_subject_level_check": True,
+        "eligibility_status": "likely_eligible",
+        "match_type": "direct_match" if leadership_signal else "needs_info",
+        "allow_relevance_score": True,
+        "relevance_score": 5 if leadership_signal else 4,
+    }
+
+
 def _detect_health_insurance(url, title, page_text, answers, profile_signals=None):
     lower = page_text.lower()
     has_keyword = ("student health insurance" in lower or "health plan" in lower
@@ -2617,8 +3008,11 @@ def _detect_health_insurance(url, title, page_text, answers, profile_signals=Non
 _DETECTION_RULES = [
     _detect_fafsa,
     _detect_counseling,
+    _detect_honors_research_travel_grant,
     _detect_scholarships,
     _detect_work_study,
+    _detect_nonresident_tuition_waiver,
+    _detect_residence_life_sports_leadership,
     _detect_tuition_assistance,
     _detect_health_insurance,
 ]
@@ -2669,7 +3063,10 @@ def detect_missed_benefits(scraped_lookup, answers, existing_matches,
                 continue
 
             detected_keyword = str(hit.get("detected_keyword") or "").strip()
-            if not _is_keyword_subject_level(detected_keyword, url, title, page_text):
+            if (
+                not hit.get("skip_subject_level_check")
+                and not _is_keyword_subject_level(detected_keyword, url, title, page_text)
+            ):
                 continue
 
             if (
@@ -2693,7 +3090,10 @@ def detect_missed_benefits(scraped_lookup, answers, existing_matches,
                 relevance_score = int(raw_relevance_score)
             except (TypeError, ValueError):
                 relevance_score = 2
-            relevance_score = min(2, relevance_score)
+            if hit.get("allow_relevance_score"):
+                relevance_score = max(1, min(5, relevance_score))
+            else:
+                relevance_score = min(2, relevance_score)
 
             result = MatchResult(
                 match_id=str(uuid.uuid4()),
@@ -2707,9 +3107,9 @@ def detect_missed_benefits(scraped_lookup, answers, existing_matches,
                 reasoning=hit["reasoning"],
                 action_details="",
                 evidence_quote=hit["evidence_quote"],
-                evidence_type="keyword-detection",
-                eligibility_status="needs_info",
-                match_type="general_resource",
+                evidence_type=hit.get("evidence_type", "keyword-detection"),
+                eligibility_status=hit.get("eligibility_status", "needs_info"),
+                match_type=hit.get("match_type", "general_resource"),
                 cross_references=[],
                 inferred_from=hit.get("inferred_from", []),
                 tags=hit_tags,

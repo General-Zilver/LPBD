@@ -1,0 +1,16 @@
+{
+  "run_id": "c02991ff",
+  "user": "default_user",
+  "model": "phi3:mini",
+  "current_stage": "complete",
+  "stages_completed": [
+    "filtering",
+    "matching"
+  ],
+  "items_processed": 1,
+  "items_total": 1,
+  "last_processed_item": "https://www.utrgv.edu/ucentral/tuition-advantage/index.htm",
+  "answers_hash": "bd5caf67fd48e020",
+  "started_at": "2026-05-09T00:06:20.158120",
+  "updated_at": "2026-05-09T00:06:56.496903"
+}
