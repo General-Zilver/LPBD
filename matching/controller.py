@@ -15,14 +15,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from matching.models import MatchResultsEnvelope
 from matching.pipeline import run_pipeline, load_results, save_results
-from matching.realtime import match_and_save
+from matching.realtime import fetch_single_page_lookup
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SCRAPED_DIR = PROJECT_ROOT / "scraped_output"
-# Realtime single-page mode still uses embeddings cache.
-DEFAULT_EMBEDDINGS = PROJECT_ROOT / "embeddings.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "matched_benefits.json"
 DEFAULT_STATE = PROJECT_ROOT / "pipeline_state.json"
+DEFAULT_REALTIME_STATE = PROJECT_ROOT / "pipeline_state_realtime.json"
 
 
 # Loads answers for a specific user from answers.json.
@@ -110,11 +109,21 @@ def run_matching_pipeline(
     return envelope
 
 
-# Matches a single URL immediately without the full pipeline.
-# Fetches -> embeds (nomic) -> matches (phi3) -> saves results.
+# Matches a single URL by fetching/scraping it, then running the normal
+# filter -> match -> pass2 -> hard gate -> validate -> detect pipeline stages.
 # Returns a list of MatchResult objects.
-def run_single_page(user, url, model=None):
-    _resolved_user, answers = resolve_user_answers(user)
+def run_single_page(
+    user,
+    url,
+    model=None,
+    delay=5,
+    output=None,
+    verify_pass2=True,
+    low_priority=False,
+    num_threads=None,
+    profile_keywords=True,
+):
+    resolved_user, answers = resolve_user_answers(user)
     if not answers:
         raise ValueError(
             f"No answers found for user '{user}'. "
@@ -123,13 +132,22 @@ def run_single_page(user, url, model=None):
 
     import ollama_client as _oc
 
-    return match_and_save(
-        url=url,
+    scraped_lookup, _page = fetch_single_page_lookup(url)
+    envelope, _stats = run_pipeline(
+        user=resolved_user,
         answers=answers,
-        results_path=DEFAULT_RESULTS,
-        embeddings_path=DEFAULT_EMBEDDINGS,
+        scraped_dir=DEFAULT_SCRAPED_DIR,
+        results_path=output or DEFAULT_RESULTS,
+        state_path=DEFAULT_REALTIME_STATE,
+        scraped_lookup=scraped_lookup,
         model=model or _oc.DEFAULT_MODEL,
+        delay=delay,
+        verify_pass2=verify_pass2,
+        low_priority=low_priority,
+        num_threads=num_threads,
+        use_profile_keywords=profile_keywords,
     )
+    return [r for r in envelope.results if r.page_url == url]
 
 
 # Returns the current results envelope for the GUI or API to display.

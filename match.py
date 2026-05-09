@@ -63,16 +63,26 @@ def main():
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "matched_benefits.json",
                         help="Output path for matched benefits")
     parser.add_argument("--url", type=str, default=None,
-                        help="Single URL for real-time matching (skips pipeline)")
+                        help="Single URL to fetch, scrape, and run through the matching pipeline")
     args = parser.parse_args()
     resolved_model = args.model or ollama_client.DEFAULT_MODEL
 
     print("=== LPBD Benefit Matcher ===\n")
 
-    # Single-page real-time mode
+    # Single-page mode: fetch/scrape one URL, then run the normal matcher pipeline.
     if args.url:
         print(f"Real-time matching: {args.url}\n")
-        results = run_single_page(args.user, args.url, model=args.model)
+        results = run_single_page(
+            args.user,
+            args.url,
+            model=args.model,
+            delay=args.delay,
+            output=args.output,
+            verify_pass2=args.verify_pass2,
+            low_priority=args.low_priority,
+            num_threads=args.num_threads,
+            profile_keywords=args.profile_keywords,
+        )
 
         print(f"\n=== Real-time Matching Complete ===")
         print(f"Benefits found: {len(results)}")

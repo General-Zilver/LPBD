@@ -1,10 +1,12 @@
-# realtime.py -- Single-page immediate matching for when the user adds
-# a custom URL and wants instant results. Fetches the page, embeds it
-# with nomic-embed-text (reusing the embedder module), skips the filter,
-# and runs it through phi3 matching (reusing the matcher module).
+# realtime.py -- Single-page helpers for when the user adds a custom URL.
+# The current controller fetches and normalizes the page here, then hands the
+# scraped lookup to the normal matching pipeline. Older immediate-match helpers
+# remain below for compatibility with any direct imports.
 
 import hashlib
+import os
 import sys
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +28,37 @@ from matching.profile_signals import build_profile_signals
 from matching.rules import format_hints_for_prompt
 from matching.validator import validate_matches, detect_missed_benefits
 from matching.pipeline import load_results, save_results, compute_cross_references
+from worker_service.worker import _content_quality_check, _normalize_text, _page_title, _sha256
+
+
+def fetch_single_page_lookup(url, timeout_s=30):
+    use_env_proxy = os.getenv("LPBD_USE_ENV_PROXY", "").strip().lower() in {"1", "true", "yes"}
+    session = requests.Session()
+    session.trust_env = use_env_proxy
+    try:
+        print(f"  Fetching {url}...")
+        response = session.get(url, timeout=timeout_s)
+        response.raise_for_status()
+
+        title = _page_title(response.text)
+        normalized_text = _normalize_text(response.text)
+        reject_reason = _content_quality_check(url, title, normalized_text)
+        if reject_reason:
+            raise ValueError(f"Page rejected by scraper quality check: {reject_reason}")
+
+        return {
+            url: (title, normalized_text)
+        }, {
+            "url": url,
+            "title": title,
+            "normalized_text": normalized_text,
+            "text_hash": _sha256(normalized_text),
+            "etag": response.headers.get("ETag"),
+            "last_modified": response.headers.get("Last-Modified"),
+            "fetched_at": time.time(),
+        }
+    finally:
+        session.close()
 
 
 # Fetches a URL and returns (title, normalized_text).

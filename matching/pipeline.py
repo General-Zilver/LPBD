@@ -506,6 +506,7 @@ def run_pipeline(
     scraped_dir,
     results_path,
     state_path,
+    scraped_lookup=None,
     model=None,
     delay=5,
     verbose=False,
@@ -591,9 +592,15 @@ def run_pipeline(
             if current > peak_ram_mb:
                 peak_ram_mb = current
 
-    scraped = load_scraped_lookup(scraped_dir)
+    if scraped_lookup is not None:
+        scraped = scraped_lookup
+    else:
+        scraped = load_scraped_lookup(scraped_dir)
     if not scraped:
-        print("No scraped pages found. Run `python scrape_all.py` first.")
+        if scraped_lookup is not None:
+            print("No scraped page text available.")
+        else:
+            print("No scraped pages found. Run `python scrape_all.py` first.")
         state.current_stage = "complete"
         _mark_stage_completed(state, "matching")
         save_state(state, state_path)

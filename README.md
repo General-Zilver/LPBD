@@ -195,7 +195,7 @@ python match.py --user default_user --low-priority --num-threads 4
 # Disable profile-derived keyword additions (base keywords only)
 python match.py --user default_user --no-profile-keywords
 
-# Real-time single-page matching
+# Single-page pipeline run
 python match.py --user default_user --url https://utrgv.edu/financial-aid
 
 # Debug/test run (prints reports to console, does not save results)
