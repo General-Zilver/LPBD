@@ -1,0 +1,133 @@
+{
+"default_user":{
+        "What is your full legal name?": {
+            "Profile": "Carter James Vance"
+        },
+        "What is your date of birth?": {
+            "Profile": "08/22/2006"
+        },
+        "What county and zip code do you live in?": {
+            "Profile": "Cook County, 60614"
+        },
+        "What is your gender?": {
+            "Profile": "Male"
+        },
+        "Are you a U.S citizen or permanent resident?": {
+            "Profile": "Yes, U.S. Citizen"
+        },
+        "What is your residency status?(In-state/ Out-of-state/ International)": {
+            "Profile": "Out-of-state"
+        },
+        "Are you a veteran or active-duty military?": {
+            "Profile": "No"
+        },
+        "Do you have dependents?": {
+            "Profile": "No"
+        },
+        "Are you a first-generation college student?": {
+            "Profile": "No, both parents are university alumni"
+        },
+        "What is your institution name?": {
+            "Academic": "The University of Texas Rio Grande Valley"
+        },
+        "What is your current year/classification? (Freshman / Sophomore / Junior / Senior / Graduate)": {
+            "Academic": "Freshman"
+        },
+        "Are you enrolled full-time or part-time?": {
+            "Academic": "Full-time"
+        },
+        "What is your major or intended major?": {
+            "Academic": "Pre-Med / Biology"
+        },
+        "What is your current GPA?": {
+            "Academic": "4.0"
+        },
+        "Do you have access to a student email address?": {
+            "Academic": "Yes"
+        },
+        "Are you enrolled in an accredited institution?": {
+            "Academic": "Yes"
+        },
+        "Do you currently have health insurance?": {
+            "Health & Wellness": "Yes, comprehensive PPO under my parents"
+        },
+        "Are you covered under a parent or guardian's plan?": {
+            "Health & Wellness": "Yes"
+        },
+        "Do you take any regular medications?": {
+            "Health & Wellness": "No"
+        },
+        "Do you have a disability registered with your institution?": {
+            "Health & Wellness": "No"
+        },
+        "Are you registered with your campus health center?": {
+            "Health & Wellness": "Yes, just for routine sports physicals"
+        },
+        "Are you aware of campus mental health or counseling services?": {
+            "Health & Wellness": "Yes, but I don't currently need them"
+        },
+        "Do you have car insurance?": {
+            "Insurance": "Yes, full comprehensive coverage on my personal vehicle"
+        },
+        "Do you have renter's insurance?": {
+            "Insurance": "Yes, for my dorm room belongings"
+        },
+        "Have you filed any claims in the last year?": {
+            "Insurance": "No"
+        },
+        "What is your current employment status?": {
+            "Financial Aid & Scholarships": "Not working, focusing on my Honors classes"
+        },
+        "What is your estimated household income range? (Under $20k / $20k-$40k / $40k-$60k / $60k-$80k / $80k+)": {
+            "Financial Aid & Scholarships": "$80k+"
+        },
+        "Have you completed the FAFSA for this academic year?": {
+            "Financial Aid & Scholarships": "Yes, but only because the university requires it for merit-based awards"
+        },
+        "Do you know your Student Aid Index (SAI) or expected family contribution?": {
+            "Financial Aid & Scholarships": "Very high, over 50,000"
+        },
+        "Are you Pell Grant eligible?": {
+            "Financial Aid & Scholarships": "No"
+        },
+        "Have you received work-study funding?": {
+            "Financial Aid & Scholarships": "No"
+        },
+        "Are you currently receiving any scholarships?": {
+            "Financial Aid & Scholarships": "Yes, a National Merit Scholarship"
+        },
+        "If yes, what is the total annual scholarship amount?": {
+            "Financial Aid & Scholarships": "$15,000"
+        },
+        "Are you aware of departmental scholarships specific to your major?": {
+            "Financial Aid & Scholarships": "Yes, I am looking into Honors College specific awards"
+        },
+        "Have you visited your campus financial aid office this academic year?": {
+            "Financial Aid & Scholarships": "No"
+        },
+        "Do you live on campus, off campus, or with family?": {
+            "Housing & Food": "On campus in a premium single dorm"
+        },
+        "Do you currently have a meal plan?": {
+            "Housing & Food": "Yes, the unlimited access dining hall plan"
+        },
+        "Have you experienced food insecurity during your time as a student?": {
+            "Housing & Food": "No"
+        },
+        "Have you experienced housing insecurity during your time as a student?": {
+            "Housing & Food": "No"
+        },
+        "Do you have a personal laptop or computer?": {
+            "Technology & Access": "Yes, a new MacBook Pro and an iPad for notes"
+        },
+        "Do you have reliable internet access at home?": {
+            "Technology & Access": "Yes, the campus Wi-Fi is incredibly fast"
+        },
+        "Are you aware of any software or hardware programs offered by your institution?": {
+            "Technology & Access": "Yes, I downloaded the free Microsoft Office and Adobe Creative Cloud my tuition covers"
+        },
+        "Is there anything else about your situation that you think might be relevant to finding benefits? (open text field)": {
+            "Other": "I am enrolled in the Honors College and am looking for study abroad travel grants, pre-med shadowing programs, and intramural sports leadership opportunities."
+        }
+    }
+}

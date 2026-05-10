@@ -5,8 +5,10 @@
 # Part 2: detect_missed_benefits - keyword-based safety net for obvious
 # benefits the LLM missed or that were all rejected by validation.
 
+import difflib
 import json
 import re
+import sys
 import uuid
 from datetime import datetime
 from urllib.parse import urlparse
@@ -273,6 +275,26 @@ def _check_evidence(evidence_quote, page_text):
         return True, None
 
     word_count = len(quote_norm.split())
+    quote_words = quote_norm.split()
+    page_words = page_norm.split()
+
+    # phi3:mini sometimes paraphrases evidence quotes; accept only near-exact
+    # word-sequence matches so small wording drift does not discard grounded evidence.
+    if quote_words and page_words:
+        match = difflib.SequenceMatcher(None, quote_words, page_words).find_longest_match(
+            0,
+            len(quote_words),
+            0,
+            len(page_words),
+        )
+        fuzzy_ratio = match.size / word_count if word_count else 0
+        if fuzzy_ratio >= 0.85 and match.size >= 6:
+            print(
+                f"  Evidence fuzzy matched ({match.size}/{word_count} words).",
+                file=sys.stderr,
+            )
+            return True, None
+
     if word_count > 8:
         return False, "evidence quote is not an exact source substring"
 
@@ -459,7 +481,7 @@ def _parse_verification_json(response_text):
 
 def _verification_options(llm_options):
     options = dict(llm_options or {})
-    options.setdefault("temperature", 0)
+    options["temperature"] = 0.1
     return options
 
 
@@ -471,6 +493,7 @@ def _generate_json_with_fallback(prompt, system, model, options):
             model=model,
             options=options,
             format="json",
+            keep_alive="10m",
         )
     except Exception:
         return ollama_client.generate(
@@ -478,6 +501,7 @@ def _generate_json_with_fallback(prompt, system, model, options):
             system=system,
             model=model,
             options=options,
+            keep_alive="10m",
         )
 
 

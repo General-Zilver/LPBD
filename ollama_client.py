@@ -79,11 +79,13 @@ def start_server(timeout=20):
 # Good for matching where there's no conversation history.
 # options is passed through to Ollama's generation options (for example num_thread).
 # format is passed through to Ollama's response formatter, e.g. "json".
-def generate(prompt, system=None, model=DEFAULT_MODEL, options=None, timeout=None, format=None):
+def generate(prompt, system=None, model=DEFAULT_MODEL, options=None, timeout=None, format=None,
+             keep_alive="10m"):
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": keep_alive,
     }
     if system:
         payload["system"] = system

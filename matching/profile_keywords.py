@@ -286,13 +286,16 @@ TASK
 Suggest category-keyword additions that could improve benefit-page filtering for this student.
 Return only JSON.
 """.strip()
+    options = dict(llm_options or {})
+    options["temperature"] = 0.1
 
     try:
         response = ollama_client.generate(
             user_prompt,
             system=SYSTEM_PROMPT,
             model=model,
-            options=llm_options,
+            options=options,
+            keep_alive="10m",
         )
     except Exception as exc:
         print(f"  Profile keyword expansion skipped: {exc}")

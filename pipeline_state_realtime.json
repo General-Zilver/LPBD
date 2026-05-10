@@ -1,7 +1,7 @@
 {
-  "run_id": "c02991ff",
+  "run_id": "4a4cc2bd",
   "user": "default_user",
-  "model": "phi3:mini",
+  "model": "llama3:8b",
   "current_stage": "complete",
   "stages_completed": [
     "filtering",
@@ -9,8 +9,8 @@
   ],
   "items_processed": 1,
   "items_total": 1,
-  "last_processed_item": "https://www.utrgv.edu/ucentral/tuition-advantage/index.htm",
-  "answers_hash": "bd5caf67fd48e020",
-  "started_at": "2026-05-09T00:06:20.158120",
-  "updated_at": "2026-05-09T00:06:56.496903"
+  "last_processed_item": "https://www.utrgv.edu/admissions/graduate/funding/index.htm",
+  "answers_hash": "70d9339413849597",
+  "started_at": "2026-05-09T19:28:28.241195",
+  "updated_at": "2026-05-09T19:29:23.798640"
 }

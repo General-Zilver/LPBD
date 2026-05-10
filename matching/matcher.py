@@ -21,6 +21,15 @@ from matching.rules import format_hints_for_prompt
 
 MATCH_MODEL = ollama_client.DEFAULT_MODEL
 
+# Stopwords used only when filtering inferred_from facts by profile-token overlap.
+INFERRED_FROM_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "of", "in", "on", "at", "to", "for", "with", "by", "from", "as",
+    "and", "or", "not", "no", "yes", "i", "you", "my", "your", "this",
+    "that", "these", "those", "it", "its", "has", "have", "had", "do",
+    "does", "did", "status", "type", "level", "any", "some", "all",
+}
+
 
 # Figures out whether a URL is .edu, .gov, or something else.
 def detect_source_type(url):
@@ -375,11 +384,19 @@ def _coerce_text(value):
     return str(value)
 
 
+# Filters inferred_from facts using token overlap with stopword removal. This
+# accepts facts when at least half of their content tokens appear in the profile
+# vocabulary and at least one matched token is 4+ characters. This replaced strict
+# substring matching because LLM facts like "Graduate student" often do not match
+# key-value profile formatting word-for-word.
 def _filter_inferred_from(raw_value, profile_text, profile_signals_text):
     source_blob = _normalize_free_text(
         " ".join([profile_text or "", profile_signals_text or ""])
     )
     if not source_blob:
+        return []
+    source_token_set = set(re.findall(r"[a-z0-9]+", source_blob))
+    if not source_token_set:
         return []
 
     filtered = []
@@ -391,7 +408,14 @@ def _filter_inferred_from(raw_value, profile_text, profile_signals_text):
         normalized = _normalize_free_text(clean)
         if not normalized:
             continue
-        if normalized not in source_blob:
+        tokens = re.findall(r"[a-z0-9]+", normalized)
+        content_tokens = [t for t in tokens if t not in INFERRED_FROM_STOPWORDS]
+        if not content_tokens:
+            continue
+        matched = [t for t in content_tokens if t in source_token_set]
+        overlap_ratio = len(matched) / len(content_tokens)
+        has_long_match = any(len(t) >= 4 for t in matched)
+        if overlap_ratio < 0.5 or not has_long_match:
             continue
         if normalized in seen:
             continue
@@ -439,27 +463,47 @@ def to_match_result(raw, url, title, source_type, pipeline_run_id, profile_text=
     if match_type not in allowed_match_types:
         match_type = ""
 
+    benefit_name_text = _coerce_text(raw.get("benefit_name"))
+    summary_text = _coerce_text(raw.get("summary"))
+    reasoning_text = _coerce_text(raw.get("reasoning"))
+    evidence_quote_text = _coerce_text(raw.get("evidence_quote"))
+    inferred_from_list = _filter_inferred_from(
+        raw.get("inferred_from"),
+        profile_text,
+        profile_signals_text,
+    )
+
+    if not summary_text.strip() and benefit_name_text.strip():
+        if evidence_quote_text.strip():
+            summary_text = f"{benefit_name_text}. Source text: {evidence_quote_text}"
+        else:
+            summary_text = f"Benefit candidate identified on page: {benefit_name_text}."
+
+    if not reasoning_text.strip():
+        inferred_text = ", ".join(inferred_from_list) if inferred_from_list else "none recorded"
+        reasoning_text = (
+            f"Classified as {match_type or 'unspecified'} with eligibility status "
+            f"{eligibility_status or 'unspecified'}. Profile facts that informed "
+            f"this match: {inferred_text}."
+        )
+
     return MatchResult(
         match_id=str(uuid.uuid4()),
         page_url=url,
         page_title=title,
         source_type=source_type,
         relevance_score=score,
-        benefit_name=_coerce_text(raw.get("benefit_name")),
+        benefit_name=benefit_name_text,
         action=raw.get("action") or "be-aware",
-        summary=_coerce_text(raw.get("summary")),
-        reasoning=_coerce_text(raw.get("reasoning")),
+        summary=summary_text,
+        reasoning=reasoning_text,
         action_details=_coerce_text(raw.get("action_details")),
-        evidence_quote=_coerce_text(raw.get("evidence_quote")),
+        evidence_quote=evidence_quote_text,
         evidence_type=_coerce_text(raw.get("evidence_type")),
         eligibility_status=eligibility_status,
         match_type=match_type,
         cross_references=[],
-        inferred_from=_filter_inferred_from(
-            raw.get("inferred_from"),
-            profile_text,
-            profile_signals_text,
-        ),
+        inferred_from=inferred_from_list,
         tags=[raw.get("tags")] if isinstance(raw.get("tags"), str) else (raw.get("tags") or []),
         matched_at=datetime.now().isoformat(),
         pipeline_run_id=pipeline_run_id,
@@ -501,6 +545,8 @@ def match_page(url, title, page_text, profile_text, profile_signals_text, hints_
                source_type, pipeline_run_id, model=MATCH_MODEL, llm_options=None):
     chunks = chunk_text(page_text)
     results = []
+    options = dict(llm_options or {})
+    options["temperature"] = 0.1
 
     for chunk in chunks:
         prompt = build_user_prompt(
@@ -515,7 +561,8 @@ def match_page(url, title, page_text, profile_text, profile_signals_text, hints_
 
         try:
             response = ollama_client.generate(
-                prompt, system=SYSTEM_PROMPT, model=model, options=llm_options
+                prompt, system=SYSTEM_PROMPT, model=model, options=options,
+                keep_alive="10m"
             )
             raw_benefits = parse_response_json(response)
 

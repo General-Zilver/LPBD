@@ -2,7 +2,7 @@
 # that match the user's profile. Thin wrapper around matching/controller.py,
 # same pattern as map.py wrapping mapper and scrape_all.py wrapping the worker.
 # Usage: python match.py --user john_doe
-#        python match.py --user john_doe --model phi3:mini --delay 3
+#        python match.py --user john_doe --model llama3:8b --delay 3
 #        python match.py --user john_doe --url https://example.edu/scholarships
 
 import argparse
@@ -72,7 +72,7 @@ def main():
 def _main_inner():
     parser = argparse.ArgumentParser(description="Match benefits using the local pipeline.")
     parser.add_argument("--user", required=True, help="Username from answers.json")
-    parser.add_argument("--model", default="phi3:mini", help="Ollama model name")
+    parser.add_argument("--model", default=ollama_client.DEFAULT_MODEL, help="Ollama model name")
     parser.add_argument("--delay", type=int, default=5,
                         help="Seconds between Ollama calls (default: 5)")
     parser.add_argument(
